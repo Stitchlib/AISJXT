@@ -16,7 +16,7 @@ import threading
 from typing import Dict, List
 
 from .config_manager import CameraConfig, ConfigManager
-from .models import CameraInfo, CameraType
+from .models import CameraInfo, CameraType, normalize_camera_type
 
 logger = logging.getLogger("camera_manager")
 
@@ -29,15 +29,24 @@ class CameraManager:
         self._load_from_config()
 
     def _load_from_config(self) -> None:
+        """从配置装载摄像头清单。
+
+        类型一律经 normalize_camera_type 归一化：历史配置里可能存在 "simulation"、
+        "rtsp" 等非枚举写法，若直接 CameraType(c.type) 会在启动时抛异常导致整个
+        后端起不来。归一化让脏数据退化为仿真而不是崩溃。
+        """
         for c in self._cm.get().cameras:
-            self._cameras[c.id] = CameraInfo(
-                id=c.id,
-                name=c.name,
-                type=CameraType(c.type),
-                source=c.source,
-                enabled=c.enabled,
-                status="unknown",
-            )
+            try:
+                self._cameras[c.id] = CameraInfo(
+                    id=c.id,
+                    name=c.name,
+                    type=CameraType(normalize_camera_type(c.type)),
+                    source=c.source,
+                    enabled=c.enabled,
+                    status="unknown",
+                )
+            except Exception as e:  # 单个摄像头配置异常不应阻塞其余设备装载
+                logger.warning("摄像头配置 %s 装载失败，已跳过: %s", getattr(c, "id", "?"), e)
 
     def list(self) -> List[CameraInfo]:
         return list(self._cameras.values())

@@ -21,9 +21,30 @@
     <el-card v-loading="loading" shadow="hover">
       <el-empty v-if="!loading && cameras.length === 0" description="暂无设备，请添加或扫描" />
       <el-table v-else :data="cameras" border>
+        <el-table-column label="实时缩略图" width="110" align="center">
+          <template #default="{ row }">
+            <el-image
+              v-if="row.enabled"
+              :src="snapshotUrl(row.id)"
+              :preview-src-list="[previewShotUrl(row.id)]"
+              fit="cover"
+              class="thumb"
+              hide-on-click-modal
+            >
+              <template #error>
+                <div class="thumb-placeholder">加载中</div>
+              </template>
+            </el-image>
+            <div v-else class="thumb-placeholder disabled">已停用</div>
+          </template>
+        </el-table-column>
         <el-table-column prop="id" label="设备ID" min-width="140" />
         <el-table-column prop="name" label="名称" min-width="140" />
-        <el-table-column prop="type" label="类型" width="120" />
+        <el-table-column prop="type" label="类型" width="120">
+          <template #default="{ row }">
+            {{ typeLabel(row.type) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="source" label="来源" min-width="160" show-overflow-tooltip />
         <el-table-column label="启用" width="90" align="center">
           <template #default="{ row }">
@@ -106,7 +127,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cameraApi, configApi } from '@/api'
 import { actions, useStore } from '@/store'
@@ -137,6 +158,29 @@ const previewReload = ref(0)
 const previewError = ref('')
 const previewUrl = computed(() => (previewId.value ? cameraApi.videoUrl(previewId.value, 12) : ''))
 const previewKey = computed(() => `${previewId.value}-${previewReload.value}`)
+
+// 缩略图自动刷新（10s 一次），避免浏览器长期缓存旧画面
+const thumbTick = ref(0)
+let thumbTimer = null
+function snapshotUrl(id) {
+  return cameraApi.snapshotUrl(id, true, 70) + `&_t=${thumbTick.value}`
+}
+function previewShotUrl(id) {
+  return cameraApi.snapshotUrl(id, true, 90) + `&_t=${thumbTick.value}`
+}
+
+const TYPE_LABELS = {
+  usb: 'USB',
+  rtsp: 'RTSP',
+  http: 'HTTP',
+  ip: 'IP',
+  network: '网络',
+  simulated: '仿真',
+  simulation: '仿真',
+}
+function typeLabel(value) {
+  return TYPE_LABELS[value] || value || '未知'
+}
 function openPreview(row) {
   previewId.value = row.id
   previewError.value = ''
@@ -154,13 +198,25 @@ function reloadPreview() {
 function openAdd() {
   form.id = ''
   form.name = ''
-  form.type = 'rtsp'
+  form.type = 'simulation'
   form.source = ''
   form.enabled = true
   form.username = ''
   form.password = ''
   addDialog.value = true
 }
+
+// 未手动切换类型时，按来源自动推断类型：rtsp:// → rtsp，http:// → http，纯数字 → usb
+watch(
+  () => form.source,
+  (s) => {
+    if (!addDialog.value) return
+    const inferred = cameraApi.inferType(s)
+    if (form.type === 'simulation' || form.type === '') {
+      form.type = inferred
+    }
+  }
+)
 
 async function load() {
   loading.value = true
@@ -294,7 +350,15 @@ async function setActive(row) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  thumbTimer = setInterval(() => {
+    thumbTick.value += 1
+  }, 10000)
+})
+onUnmounted(() => {
+  if (thumbTimer) clearInterval(thumbTimer)
+})
 </script>
 
 <style scoped>
@@ -302,4 +366,7 @@ onMounted(load)
 .controls { display: flex; gap: 8px; }
 .preview-wrap { width: 100%; min-height: 300px; background: #000; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .preview { width: 100%; display: block; }
+.thumb { width: 90px; height: 50px; border-radius: 4px; overflow: hidden; background: #111; display: block; }
+.thumb-placeholder { width: 90px; height: 50px; border-radius: 4px; background: #f4f4f5; color: #909399; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.thumb-placeholder.disabled { background: #f0f0f0; color: #c0c4cc; }
 </style>

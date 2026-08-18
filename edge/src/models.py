@@ -63,10 +63,80 @@ class DetectionResult(BaseModel):
 
 
 class CameraType(str, Enum):
+    """摄像头类型。
+
+    历史问题：前端下拉给的是 rtsp/usb/http/simulation，而后端只认 usb/ip/network，
+    导致用户选「RTSP」添加网络摄像头时，后端判定其"不是真实类型"从而根本不去取流，
+    画面永远是仿真占位。这里补齐 RTSP/HTTP，并用 normalize_camera_type 统一别名。
+    """
+
     USB = "usb"
+    RTSP = "rtsp"
+    HTTP = "http"
     IP = "ip"
     NETWORK = "network"
     SIMULATED = "simulated"
+
+
+# 类型别名归一化表（大小写不敏感）。左边是各处可能出现的写法，右边是标准值。
+_CAMERA_TYPE_ALIASES = {
+    "usb": CameraType.USB.value,
+    "local": CameraType.USB.value,
+    "webcam": CameraType.USB.value,
+    "rtsp": CameraType.RTSP.value,
+    "rtsps": CameraType.RTSP.value,
+    "onvif": CameraType.RTSP.value,
+    "http": CameraType.HTTP.value,
+    "https": CameraType.HTTP.value,
+    "mjpeg": CameraType.HTTP.value,
+    "ip": CameraType.IP.value,
+    "ipc": CameraType.IP.value,
+    "network": CameraType.NETWORK.value,
+    "net": CameraType.NETWORK.value,
+    "simulated": CameraType.SIMULATED.value,
+    "simulation": CameraType.SIMULATED.value,
+    "sim": CameraType.SIMULATED.value,
+    "fake": CameraType.SIMULATED.value,
+}
+
+# 需要真实取流的类型集合（非仿真）。
+_REAL_CAMERA_TYPES = frozenset(
+    {
+        CameraType.USB.value,
+        CameraType.RTSP.value,
+        CameraType.HTTP.value,
+        CameraType.IP.value,
+        CameraType.NETWORK.value,
+    }
+)
+
+
+def normalize_camera_type(value) -> str:
+    """把任意来源的类型写法归一化为标准值；无法识别时返回 'simulated'。"""
+    if value is None:
+        return CameraType.SIMULATED.value
+    raw = getattr(value, "value", value)
+    key = str(raw).strip().lower()
+    return _CAMERA_TYPE_ALIASES.get(key, CameraType.SIMULATED.value)
+
+
+def is_real_camera_type(value) -> bool:
+    """该类型是否应尝试打开真实摄像头（而非直接走仿真画面）。"""
+    return normalize_camera_type(value) in _REAL_CAMERA_TYPES
+
+
+def infer_camera_type(source) -> str:
+    """按来源串推断类型：rtsp:// → rtsp，http(s):// → http，纯数字 → usb，否则仿真。"""
+    s = str(source or "").strip().lower()
+    if not s:
+        return CameraType.SIMULATED.value
+    if s.startswith("rtsp://") or s.startswith("rtsps://"):
+        return CameraType.RTSP.value
+    if s.startswith("http://") or s.startswith("https://"):
+        return CameraType.HTTP.value
+    if s.isdigit():
+        return CameraType.USB.value
+    return CameraType.SIMULATED.value
 
 
 class CameraInfo(BaseModel):

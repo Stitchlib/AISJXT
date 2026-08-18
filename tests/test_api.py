@@ -182,11 +182,22 @@ def test_alert_rule_and_event(client):
     # 启动检测，触发告警
     client.post("/api/v1/inspection/start", headers=h)
     import time
-    time.sleep(2)
+    # 轮询等待：检测器首次推理有预热开销，且采样率有限，固定 sleep 太脆弱。
+    # 最多等 20s，直到产生至少一条检测结果与对应告警事件。
+    total = 0
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        time.sleep(1)
+        st = client.get("/api/v1/inspection/status", headers=h).json()
+        if st.get("total_processed", 0) > 0:
+            break
     client.post("/api/v1/inspection/stop", headers=h)
+    # 停止后再等一拍，确保告警落库
+    time.sleep(1)
     ev = client.get("/api/v1/alerts/events", headers=h)
     assert ev.status_code == 200
-    assert ev.json()["total"] >= 1
+    total = ev.json()["total"]
+    assert total >= 1, f"检测已运行但未产生任何告警事件（total_processed 见状态）"
     eid = ev.json()["items"][0]["id"]
     assert client.post(f"/api/v1/alerts/events/{eid}/acknowledge", headers=h).status_code == 200
     assert client.delete(f"/api/v1/alerts/rules/{rule_id}", headers=h).status_code == 200

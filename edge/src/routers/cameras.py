@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..camera_capture import build_authed_source, probe_source
 from ..config_manager import CameraConfig
-from ..models import CameraInfo, User
+from ..models import CameraInfo, CameraType, User, infer_camera_type, normalize_camera_type
 
 router = APIRouter(prefix="/cameras", tags=["cameras"], dependencies=[Depends(get_current_user)])
 
@@ -14,7 +14,8 @@ router = APIRouter(prefix="/cameras", tags=["cameras"], dependencies=[Depends(ge
 class CameraCreate(BaseModel):
     id: str
     name: str
-    type: str = "simulated"
+    # 允许 rtsp/http/usb/ip/network/simulated 及常见别名；空值则按 source 自动推断
+    type: Optional[str] = None
     source: str = "0"
     enabled: bool = True
     username: Optional[str] = None
@@ -25,6 +26,7 @@ class CameraUpdate(BaseModel):
     name: Optional[str] = None
     enabled: Optional[bool] = None
     status: Optional[str] = None
+    type: Optional[str] = None
     source: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
@@ -64,16 +66,25 @@ def get_camera(cam_id: str, request: Request):
 
 @router.post("", status_code=201)
 def add_camera(body: CameraCreate, request: Request):
+    """添加摄像头。
+
+    类型处理：前端历史上会传 "rtsp"/"http"/"simulation" 等写法，与后端枚举不一致，
+    过去会导致「选 RTSP 却永远不取真流」甚至写入配置后返回 500。现在统一归一化，
+    未指定类型时按 source 自动推断（rtsp:// → rtsp，数字 → usb，http:// → http）。
+    """
     cm = request.app.state.cm
+    payload = body.model_dump()
+    ctype = normalize_camera_type(body.type) if body.type else infer_camera_type(body.source)
+    payload["type"] = ctype
     try:
-        cfg = CameraConfig(**body.model_dump())
+        cfg = CameraConfig(**payload)
         # 若提供了凭据且为 rtsp/http 源，将鉴权信息注入 source，确保取流可用
         if body.username and body.source.lower().startswith(("rtsp", "http")):
             cfg.source = build_authed_source(body.source, body.username, body.password)
         cm.add_camera(cfg)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    info = CameraInfo(**body.model_dump())
+    info = CameraInfo(**payload)
     info.source = cfg.source  # 响应需反映已注入的鉴权信息
     request.app.state.cam.add(info)
     return request.app.state.cam.get(body.id)
@@ -90,6 +101,9 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request):
         cam.enabled = body.enabled
     if body.status is not None:
         cam.status = body.status
+    if body.type is not None:
+        # 允许纠正历史脏类型（如把误设的 simulated 改回 rtsp 以真正取流）
+        cam.type = CameraType(normalize_camera_type(body.type))
     cm = request.app.state.cm
     for c in cm.get().cameras:
         if c.id == cam_id:
@@ -97,6 +111,8 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request):
                 c.name = body.name
             if body.enabled is not None:
                 c.enabled = body.enabled
+            if body.type is not None:
+                c.type = normalize_camera_type(body.type)
             # 凭据/来源更新：重新注入鉴权信息
             if body.source is not None or body.username is not None or body.password is not None:
                 new_source = body.source if body.source is not None else c.source
@@ -108,7 +124,20 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request):
                     c.source = new_source
                 c.username = new_user
                 c.password = new_pass
+                # 未显式指定类型时，按新来源纠正类型，避免"改了 RTSP 地址仍按仿真处理"
+                if body.type is None and body.source is not None:
+                    inferred = infer_camera_type(new_source)
+                    c.type = inferred
+                    cam.type = CameraType(inferred)
+                cam.source = c.source
     cm.save()
+    # 来源/凭据/类型变了，旧的采集连接必须作废，下次观看重新按新配置开流
+    hubs = getattr(request.app.state, "hubs", None)
+    if hubs is not None:
+        try:
+            hubs.invalidate(cam_id)
+        except Exception:
+            pass
     return cam
 
 

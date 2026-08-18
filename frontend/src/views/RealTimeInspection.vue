@@ -45,6 +45,7 @@
           </div>
           <div class="video-bar">
             <el-button size="small" :disabled="!videoUrl" @click="reloadVideo">刷新画面</el-button>
+            <el-switch v-model="annotateVideo" active-text="叠加缺陷框" size="small" />
             <span class="hint">{{ selectedCamera || '—' }}</span>
           </div>
         </el-card>
@@ -78,7 +79,7 @@
 </template>
 
 <script setup>
-import { inject, ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useStore, actions } from '@/store'
 import { createWebSocket } from '@/utils/websocket'
@@ -92,10 +93,13 @@ let ws = null
 
 const reloadKey = ref(0)
 const videoError = ref('')
-const videoUrl = computed(() => (selectedCamera.value ? cameraApi.videoUrl(selectedCamera.value, 15) : ''))
+const annotateVideo = ref(true)
+const videoUrl = computed(() =>
+  selectedCamera.value ? cameraApi.videoUrl(selectedCamera.value, 15, annotateVideo.value) : ''
+)
 const streamStatus = computed(() => (store.inspection.running ? '检测直播中' : '画面预览中'))
 
-watch(selectedCamera, () => {
+watch([selectedCamera, annotateVideo], () => {
   videoError.value = ''
   reloadKey.value += 1
 })

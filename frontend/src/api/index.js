@@ -16,9 +16,23 @@ export const cameraApi = {
   test: (payload) => client.post('/cameras/test', payload).then((r) => r.data),
   setActive: (id) => client.put(`/cameras/${id}/active`).then((r) => r.data),
   // MJPEG 实时画面地址：<img> 无法附带 Authorization 头，故用 ?token= 传递 JWT
-  videoUrl: (id, fps = 15) => {
+  videoUrl: (id, fps = 15, annotate = true) => {
     const token = localStorage.getItem('aiqc_token') || ''
-    return `/api/v1/cameras/${encodeURIComponent(id)}/video?token=${encodeURIComponent(token)}&fps=${fps}`
+    return `/api/v1/cameras/${encodeURIComponent(id)}/video?token=${encodeURIComponent(token)}&fps=${fps}&annotate=${annotate}`
+  },
+  snapshotUrl: (id, annotate = true, quality = 85) => {
+    const token = localStorage.getItem('aiqc_token') || ''
+    return `/api/v1/cameras/${encodeURIComponent(id)}/snapshot?token=${encodeURIComponent(token)}&annotate=${annotate}&quality=${quality}`
+  },
+  streamStatus: () => client.get('/cameras/streams/status').then((r) => r.data),
+  // 按来源字符串推断类型：前端本地显示用；后端也会再做一次归一化
+  inferType: (source) => {
+    if (!source) return 'simulation'
+    const s = String(source).trim().toLowerCase()
+    if (s.startsWith('rtsp://') || s.startsWith('rtsps://')) return 'rtsp'
+    if (s.startsWith('http://') || s.startsWith('https://')) return 'http'
+    if (/^\d+$/.test(s)) return 'usb'
+    return 'simulation'
   },
 }
 

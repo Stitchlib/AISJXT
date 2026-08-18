@@ -45,6 +45,10 @@ class AppConfig(BaseModel):
     # 自动发现时使用的默认凭据（留空表示匿名）；避免每次手动输入。
     discover_username: Optional[str] = None
     discover_password: Optional[str] = None
+    # 视频流：采集帧率，以及最后一个观看端离开后继续保持摄像头打开的秒数
+    # （linger 避免前端刷新页面时反复开关摄像头，RTSP 重连往往要数秒）
+    stream_fps: int = 15
+    stream_linger_seconds: float = 6.0
     # 认证：JWT 签名密钥（生产环境务必通过环境变量覆盖）
     secret_key: str = "aiqc-local-dev-secret-change-me-2026-prod"
     token_expire_minutes: int = 60 * 12

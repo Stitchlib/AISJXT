@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -21,6 +22,7 @@ from src.auth import AuthService
 from src.camera_manager import CameraManager
 from src.config_manager import ConfigManager
 from src.database import Database
+from src.frame_hub import HubRegistry
 from src.inspection_engine import InspectionEngine
 from src.routers import (
     alerts,
@@ -51,13 +53,28 @@ async def lifespan(app: FastAPI):
     db = Database(cm.get().db_path)
     ws = ConnectionManager()
     cam = CameraManager()
-    engine = InspectionEngine(cm, db, ws, cam)
+    # 共享帧总线：一台摄像头只开一路采集，视频流与检测引擎共用同一路帧
+    hubs = HubRegistry(fps=cm.get().stream_fps, linger=cm.get().stream_linger_seconds)
+    engine = InspectionEngine(cm, db, ws, cam, hubs)
     auth_svc = AuthService(db, cm)
+
+    # 后台预热检测器：首次 YOLO 推理有约数秒的 predictor 初始化开销，
+    # 放到后台线程先跑一次，避免"第一次点开始检测"时整条链路卡 6 秒。
+    def _warmup_detector() -> None:
+        try:
+            engine._detector.detect(None)
+            logger.info("检测器预热完成, mode=%s", engine.detector_mode)
+        except Exception as e:  # 预热失败绝不影响主服务
+            logger.warning("检测器预热失败（不影响启动）：%s", e)
+
+    if not engine._detector.is_simulation:
+        threading.Thread(target=_warmup_detector, daemon=True).start()
     # 注入到 app.state，供路由与 WebSocket 共享
     app.state.cm = cm
     app.state.db = db
     app.state.ws = ws
     app.state.cam = cam
+    app.state.hubs = hubs
     app.state.engine = engine
     app.state.auth = auth_svc
     logger.info(
@@ -70,7 +87,6 @@ async def lifespan(app: FastAPI):
     # 可选：启动时自动扫描并注册同一局域网内的网络摄像头
     if cm.get().auto_discover:
         import socket
-        import threading
 
         def _autodiscover() -> None:
             try:
@@ -87,6 +103,8 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=_autodiscover, daemon=True).start()
     yield
     await engine.stop()
+    # 退出前必须释放所有摄像头，否则设备句柄/RTSP 连接会被残留占用
+    hubs.shutdown_all()
 
 
 app = FastAPI(title="AI视觉质检系统", version="1.0.0", lifespan=lifespan)
