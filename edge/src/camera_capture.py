@@ -55,6 +55,32 @@ def open_provider(source) -> Optional[FrameProvider]:
     return p if p.available else None
 
 
+def build_authed_source(source: str, username: str | None, password: str | None) -> str:
+    """为 rtsp/rtsps/http/https 类源注入或替换 user:pass@ 鉴权信息。
+
+    - 无 username 时原样返回；
+    - 已含 userinfo（host 前出现 @）则先去掉旧凭据再注入新凭据；
+    - 其它协议（如纯数字 USB 索引）原样返回。
+    """
+    if not username or not source:
+        return source
+    low = source.lower()
+    if not (low.startswith("rtsp") or low.startswith("http")):
+        return source
+    marker = "://"
+    idx = source.find(marker)
+    if idx == -1:
+        return source
+    head = source[: idx + len(marker)]
+    rest = source[idx + len(marker):]
+    # 去掉可能已存在的 userinfo（host 段里的 @）
+    host_part = rest.split("/", 1)[0]
+    if "@" in host_part:
+        rest = rest.split("@", 1)[1]
+    auth = f"{username}:{password or ''}@"
+    return head + auth + rest
+
+
 def probe_source(source: str, timeout: float = 5.0) -> bool:
     """探测给定源是否可打开并取到至少一帧（用于网络摄像头自动发现）。
 

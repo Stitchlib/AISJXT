@@ -24,6 +24,10 @@ class CameraConfig(BaseModel):
     type: str = "simulated"
     source: str = "0"
     enabled: bool = True
+    # 凭据（仅对 rtsp/http 类摄像头有效）；留空表示匿名。
+    # 注意：取流 URL 已内嵌 user:pass@，这里单独保存便于展示/更新/重连。
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 class AppConfig(BaseModel):
@@ -38,6 +42,9 @@ class AppConfig(BaseModel):
     cameras: List[CameraConfig] = Field(default_factory=list)
     active_camera_id: Optional[str] = None  # 当前检测使用的摄像头；为空则取列表首个
     auto_discover: bool = False  # 启动时是否自动扫描并注册同一局域网内的网络摄像头
+    # 自动发现时使用的默认凭据（留空表示匿名）；避免每次手动输入。
+    discover_username: Optional[str] = None
+    discover_password: Optional[str] = None
     # 认证：JWT 签名密钥（生产环境务必通过环境变量覆盖）
     secret_key: str = "aiqc-local-dev-secret-change-me-2026-prod"
     token_expire_minutes: int = 60 * 12

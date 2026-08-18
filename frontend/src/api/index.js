@@ -13,6 +13,7 @@ export const cameraApi = {
   remove: (id) => client.delete(`/cameras/${id}`).then((r) => r.data),
   scan: (subnet) => client.get('/cameras/network/scan', { params: { subnet } }).then((r) => r.data),
   discover: (payload) => client.post('/cameras/discover', payload).then((r) => r.data),
+  test: (payload) => client.post('/cameras/test', payload).then((r) => r.data),
   setActive: (id) => client.put(`/cameras/${id}/active`).then((r) => r.data),
 }
 

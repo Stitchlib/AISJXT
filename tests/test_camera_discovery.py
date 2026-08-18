@@ -23,6 +23,7 @@ if str(EDGE) not in sys.path:
 from fastapi.testclient import TestClient  # noqa: E402
 from main import app  # noqa: E402
 from src.camera_manager import CameraManager  # noqa: E402
+from src.camera_capture import build_authed_source  # noqa: E402
 from src.inspection_engine import InspectionEngine  # noqa: E402
 
 
@@ -117,3 +118,88 @@ def test_engine_uses_active_camera(monkeypatch):
         loop.run_until_complete(eng.stop())
     finally:
         loop.close()
+
+
+def test_build_authed_source():
+    # 无账号：原样返回
+    assert build_authed_source("rtsp://192.168.1.50:554/stream1", None, None) == "rtsp://192.168.1.50:554/stream1"
+    # 注入凭据
+    out = build_authed_source("rtsp://192.168.1.50:554/stream1", "admin", "56789-abc")
+    assert out == "rtsp://admin:56789-abc@192.168.1.50:554/stream1"
+    # 替换已有凭据
+    out2 = build_authed_source("rtsp://old:bad@192.168.1.50:554/stream1", "admin", "56789-abc")
+    assert out2 == "rtsp://admin:56789-abc@192.168.1.50:554/stream1"
+    # 非 rtsp/http（如 USB 索引）原样返回
+    assert build_authed_source("0", "admin", "x") == "0"
+
+
+class _FakeCap:
+    def __init__(self, opened=True, frame=True):
+        self._opened = opened
+        self._frame = frame
+
+    def isOpened(self):
+        return self._opened
+
+    def read(self):
+        return self._frame, (object() if self._frame else None)
+
+    def release(self):
+        pass
+
+
+class _FakeCv2:
+    def __init__(self, opened=True, frame=True):
+        self._opened = opened
+        self._frame = frame
+
+    def VideoCapture(self, src):
+        return _FakeCap(self._opened, self._frame)
+
+
+@pytest.fixture
+def fake_cv2_open(monkeypatch):
+    monkeypatch.setitem(sys.modules, "cv2", _FakeCv2(opened=True, frame=True))
+
+
+@pytest.fixture
+def fake_cv2_closed(monkeypatch):
+    monkeypatch.setitem(sys.modules, "cv2", _FakeCv2(opened=False, frame=False))
+
+
+def test_camera_test_endpoint_ok(client, fake_cv2_open, monkeypatch):
+    tok = _login(client)
+    h = {"Authorization": f"Bearer {tok}"}
+    r = client.post(
+        "/api/v1/cameras/test",
+        json={"source": "rtsp://192.168.1.50:554/stream1", "username": "admin", "password": "56789-abc"},
+        headers=h,
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_camera_test_endpoint_fail(client, fake_cv2_closed, monkeypatch):
+    tok = _login(client)
+    h = {"Authorization": f"Bearer {tok}"}
+    r = client.post(
+        "/api/v1/cameras/test",
+        json={"source": "rtsp://10.0.0.99:554/stream1", "username": "admin", "password": "wrong"},
+        headers=h,
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is False
+
+
+def test_add_camera_with_credentials(client):
+    tok = _login(client)
+    h = {"Authorization": f"Bearer {tok}"}
+    r = client.post(
+        "/api/v1/cameras",
+        json={"id": "cam_cred_1", "name": "带凭据摄像头", "type": "network",
+              "source": "rtsp://192.168.1.60:554/stream1", "username": "admin", "password": "56789-abc"},
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    # source 应已注入凭据
+    assert "admin:56789-abc@" in r.json()["source"]

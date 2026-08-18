@@ -129,6 +129,7 @@ class CameraManager:
                         cfg = CameraConfig(
                             id=cam_id, name=f"网络摄像头 {ip}", type="network",
                             source=url, enabled=True,
+                            username=username, password=password,
                         )
                         self._cm.add_camera(cfg)
                     else:

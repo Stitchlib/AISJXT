@@ -60,7 +60,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="addDialog" title="添加设备" width="440px">
+    <el-dialog v-model="addDialog" title="添加设备" width="460px">
       <el-form :model="form" label-width="90px">
         <el-form-item label="设备ID"><el-input v-model="form.id" placeholder="如 cam_002" /></el-form-item>
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
@@ -73,10 +73,13 @@
           </el-select>
         </el-form-item>
         <el-form-item label="来源"><el-input v-model="form.source" placeholder="rtsp://... 或 0" /></el-form-item>
+        <el-form-item label="账号"><el-input v-model="form.username" placeholder="匿名可留空" /></el-form-item>
+        <el-form-item label="密码"><el-input v-model="form.password" type="password" placeholder="匿名可留空" show-password /></el-form-item>
         <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="addDialog = false">取消</el-button>
+        <el-button :loading="testing" @click="testAdd">测试连接</el-button>
         <el-button type="primary" :loading="saving" @click="add">保存</el-button>
       </template>
     </el-dialog>
@@ -101,10 +104,12 @@ const scanSubnet = ref('192.168.1')
 const activeId = ref('')
 
 const addDialog = ref(false)
-const form = reactive({ id: '', name: '', type: 'rtsp', source: '', enabled: true })
+const form = reactive({ id: '', name: '', type: 'rtsp', source: '', enabled: true, username: '', password: '' })
+const testing = ref(false)
 
 const discoverDialog = ref(false)
 const dform = reactive({ subnet: '192.168.1', username: '', password: '' })
+const discoverCreds = reactive({ username: '', password: '' })
 
 function openAdd() {
   form.id = ''
@@ -112,6 +117,8 @@ function openAdd() {
   form.type = 'rtsp'
   form.source = ''
   form.enabled = true
+  form.username = ''
+  form.password = ''
   addDialog.value = true
 }
 
@@ -125,6 +132,8 @@ async function load() {
     try {
       const cfg = await configApi.get()
       activeId.value = cfg.active_camera_id || (list[0] && list[0].id) || ''
+      discoverCreds.username = cfg.discover_username || ''
+      discoverCreds.password = cfg.discover_password || ''
     } catch {
       activeId.value = (list[0] && list[0].id) || ''
     }
@@ -194,9 +203,26 @@ async function remove(row) {
 
 function openDiscover() {
   dform.subnet = scanSubnet.value || '192.168.1'
-  dform.username = ''
-  dform.password = ''
+  dform.username = discoverCreds.username
+  dform.password = discoverCreds.password
   discoverDialog.value = true
+}
+
+async function testAdd() {
+  if (!form.source) {
+    ElMessage.warning('请先填写来源（rtsp/http 地址）')
+    return
+  }
+  testing.value = true
+  try {
+    const r = await cameraApi.test({ source: form.source, username: form.username || undefined, password: form.password || undefined })
+    if (r.ok) ElMessage.success('测试连接成功：' + r.message)
+    else ElMessage.warning('连接失败：' + r.message)
+  } catch (e) {
+    ElMessage.error('测试失败：' + (e.response?.data?.detail || e.message))
+  } finally {
+    testing.value = false
+  }
 }
 
 async function doDiscover() {
