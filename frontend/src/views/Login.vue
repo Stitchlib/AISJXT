@@ -1,7 +1,7 @@
 <template>
   <div class="login-wrap">
     <el-card class="login-card" shadow="always">
-      <div class="brand">AI 视觉质检系统</div>
+      <div class="brand">映己 AI 视觉质检系统</div>
       <div class="subtitle">请登录以继续使用</div>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="0" @submit.prevent>
         <el-form-item prop="username">

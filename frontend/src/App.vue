@@ -3,7 +3,7 @@
 
   <el-container v-else class="app">
     <el-aside width="220px" class="aside">
-      <div class="logo">AI 视觉质检</div>
+      <div class="logo">映己 AI 视觉质检</div>
       <el-menu
         :default-active="active"
         router
@@ -29,7 +29,7 @@
 
     <el-container>
       <el-header class="header">
-        <div class="title">{{ route.meta.title || 'AI 视觉质检' }}</div>
+        <div class="title">{{ route.meta.title || '映己 AI 视觉质检' }}</div>
         <div class="user">
           <el-badge :value="store.alertUnread" :hidden="!store.alertUnread" :max="99" class="badge">
             <el-button text @click="goAlerts">🔔 告警</el-button>
