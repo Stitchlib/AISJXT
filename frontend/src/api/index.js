@@ -25,6 +25,18 @@ export const cameraApi = {
     return `/api/v1/cameras/${encodeURIComponent(id)}/snapshot?token=${encodeURIComponent(token)}&annotate=${annotate}&quality=${quality}`
   },
   streamStatus: () => client.get('/cameras/streams/status').then((r) => r.data),
+  // 免落库的临时预览：添加/配置摄像头前，用来源(与凭据)验证是否可取流
+  previewUrl: (source, username = '', password = '', fps = 12, annotate = false) => {
+    const token = localStorage.getItem('aiqc_token') || ''
+    const p = new URLSearchParams()
+    p.set('token', token)
+    p.set('source', source || '')
+    p.set('username', username || '')
+    p.set('password', password || '')
+    p.set('fps', String(fps))
+    p.set('annotate', String(annotate))
+    return `/api/v1/cameras/preview/stream?${p.toString()}`
+  },
   // 按来源字符串推断类型：前端本地显示用；后端也会再做一次归一化
   inferType: (source) => {
     if (!source) return 'simulation'

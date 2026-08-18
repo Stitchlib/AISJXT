@@ -99,6 +99,16 @@
         <el-form-item label="密码"><el-input v-model="form.password" type="password" placeholder="匿名可留空" show-password /></el-form-item>
         <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>
+      <div v-if="addPreviewUrl" class="add-preview">
+        <div class="add-preview-head">
+          <span>实时预览（保存前先确认可取流）</span>
+          <el-button size="small" text type="primary" @click="reloadAddPreview">刷新预览</el-button>
+        </div>
+        <div class="add-preview-wrap">
+          <img v-if="addPreviewUrl" :key="addPreviewKey" :src="addPreviewUrl" class="add-preview-img" alt="摄像头预览" @error="onAddPreviewError" />
+          <el-alert v-if="addPreviewError" type="warning" :closable="false" :title="addPreviewError" />
+        </div>
+      </div>
       <template #footer>
         <el-button @click="addDialog = false">取消</el-button>
         <el-button :loading="testing" @click="testAdd">测试连接</el-button>
@@ -159,6 +169,23 @@ const previewError = ref('')
 const previewUrl = computed(() => (previewId.value ? cameraApi.videoUrl(previewId.value, 12) : ''))
 const previewKey = computed(() => `${previewId.value}-${previewReload.value}`)
 
+// 添加对话框内嵌"临时预览"：填了来源就直接验证是否可取流，存之前先看画面
+const addPreviewReload = ref(0)
+const addPreviewError = ref('')
+const addPreviewUrl = computed(() =>
+  form.source && form.source.trim()
+    ? cameraApi.previewUrl(form.source.trim(), form.username, form.password, 12)
+    : ''
+)
+const addPreviewKey = computed(() => `add-${addPreviewReload.value}`)
+function onAddPreviewError() {
+  addPreviewError.value = '该来源暂时取不到画面（地址/凭据/网络不可达，或设备未联网）'
+}
+function reloadAddPreview() {
+  addPreviewError.value = ''
+  addPreviewReload.value += 1
+}
+
 // 缩略图自动刷新（10s 一次），避免浏览器长期缓存旧画面
 const thumbTick = ref(0)
 let thumbTimer = null
@@ -215,6 +242,7 @@ watch(
     if (form.type === 'simulation' || form.type === '') {
       form.type = inferred
     }
+    addPreviewError.value = '' // 改了来源就清掉上一次的预览错误
   }
 )
 
@@ -330,6 +358,9 @@ async function doDiscover() {
       ElMessage.success(`自动发现并注册 ${r.count} 个摄像头`)
       discoverDialog.value = false
       await load()
+      // 发现成功后直接弹出第一个摄像头的实时预览，确认画面可达
+      const first = (r.added && r.added[0]) || null
+      if (first) openPreview({ id: first.id, name: first.name })
     } else {
       ElMessage.info('未发现可用网络摄像头（请确认网段、RTSP 端口或账号密码）')
     }
@@ -365,6 +396,10 @@ onUnmounted(() => {
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .controls { display: flex; gap: 8px; }
 .preview-wrap { width: 100%; min-height: 300px; background: #000; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.add-preview { margin: 4px 0 8px; border: 1px solid #ebeef5; border-radius: 6px; padding: 8px 10px; background: #fafafa; }
+.add-preview-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #606266; margin-bottom: 6px; }
+.add-preview-wrap { width: 100%; min-height: 200px; background: #000; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.add-preview-img { width: 100%; display: block; }
 .preview { width: 100%; display: block; }
 .thumb { width: 90px; height: 50px; border-radius: 4px; overflow: hidden; background: #111; display: block; }
 .thumb-placeholder { width: 90px; height: 50px; border-radius: 4px; background: #f4f4f5; color: #909399; font-size: 12px; display: flex; align-items: center; justify-content: center; }

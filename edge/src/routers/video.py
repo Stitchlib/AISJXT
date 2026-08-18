@@ -1,8 +1,9 @@
 """视频流接口：把摄像头画面（含缺陷标注）以 MJPEG 推给前端。
 
 端点：
-- GET /cameras/{cam_id}/video     -> multipart/x-mixed-replace MJPEG 实时画面
+- GET /cameras/{cam_id}/video     -> multipart/x-mixed-replace MJPEG 实时画面（已配置摄像头）
 - GET /cameras/{cam_id}/snapshot  -> 单帧 JPEG（缩略图 / 报告插图 / 快速自检）
+- GET /cameras/preview/stream    -> 免落库的临时预览（添加/配置摄像头前先验证来源是否可取流）
 - GET /cameras/streams/status     -> 各路采集的观看数与健康状态（排障用）
 
 鉴权：MJPEG 经 <img src> 拉取，无法附带 Authorization 头，故支持 ?token= 查询参数；
@@ -18,6 +19,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
+from ..models import CameraInfo, CameraType, infer_camera_type, normalize_camera_type
 from ..video_stream import VideoStreamer, encode_jpeg, render_frame
 
 logger = logging.getLogger("video_router")
@@ -53,6 +55,60 @@ def streams_status(request: Request):
     _authenticate_video(request)
     hubs = getattr(request.app.state, "hubs", None)
     return {"streams": hubs.stats() if hubs is not None else []}
+
+
+@router.get("/preview/stream")
+def camera_preview(
+    request: Request,
+    source: str = "",
+    username: str = "",
+    password: str = "",
+    fps: int = 12,
+    annotate: bool = False,
+):
+    """免落库的临时预览：添加/配置摄像头前，先用来源（与凭据）验证是否可取流。
+
+    不会写入配置，也不会污染已配置的摄像头列表——内部用临时 camera_id 走同一套
+    FrameHub 采集与渲染逻辑（含凭据注入、取流失败降级仿真），流关闭后立即作废该临时连接。
+    """
+    _authenticate_video(request)
+    if not source or not source.strip():
+        raise HTTPException(status_code=400, detail="source 不能为空")
+    hubs = request.app.state.hubs
+    # 临时摄像头对象：类型按来源推断（rtsp://→rtsp，http://→http，纯数字→usb）
+    cam = CameraInfo(
+        id=f"__preview__{abs(hash(source + '|' + username))}",
+        name="临时预览",
+        type=CameraType(normalize_camera_type(infer_camera_type(source))),
+        source=source.strip(),
+        enabled=True,
+        username=username or None,
+        password=password or None,
+    )
+    hub = hubs.acquire(cam)
+
+    def _cleanup() -> None:
+        try:
+            hubs.release(hub)
+        except Exception:
+            pass
+        try:
+            hubs.invalidate(cam.id)  # 临时连接，关闭即作废，不留 linger
+        except Exception:
+            pass
+
+    streamer = VideoStreamer(
+        cam,
+        hub,
+        annotate=annotate,
+        engine=None,
+        on_close=_cleanup,
+    )
+    return StreamingResponse(
+        streamer.stream(fps=fps),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-cache, no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/{cam_id}/video")

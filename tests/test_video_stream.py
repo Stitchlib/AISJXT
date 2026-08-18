@@ -67,3 +67,35 @@ def test_video_mjpeg_content(client, monkeypatch):
     assert body.startswith(b"--frame")
     # JPEG 魔术字节
     assert b"\xff\xd8\xff" in body
+
+
+def test_preview_requires_token(client):
+    # 临时预览同样需要令牌
+    r = client.get("/api/v1/cameras/preview/stream?source=test-stream")
+    assert r.status_code == 401
+
+
+def test_preview_empty_source_rejected(client):
+    tok = _login(client)
+    r = client.get(f"/api/v1/cameras/preview/stream?source=&token={tok}")
+    assert r.status_code == 400
+
+
+def test_preview_mjpeg_content(client, monkeypatch):
+    tok = _login(client)
+
+    def _one_frame(self, fps=15):
+        frame = vs.synthetic_frame("preview", "临时预览", time.time())
+        ok, buf = cv2.imencode(".jpg", frame)
+        assert ok
+        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
+
+    monkeypatch.setattr(vs.VideoStreamer, "stream", _one_frame)
+
+    # 免落库的临时预览：任意来源（此处用非 rtsp/http/数字串 -> 仿真）都应返回 MJPEG
+    r = client.get(f"/api/v1/cameras/preview/stream?token={tok}&source=test-stream&username=u&password=p")
+    assert r.status_code == 200
+    assert "multipart/x-mixed-replace" in r.headers["content-type"]
+    body = r.content
+    assert body.startswith(b"--frame")
+    assert b"\xff\xd8\xff" in body
