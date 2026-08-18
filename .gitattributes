@@ -1,0 +1,17 @@
+# 统一文本文件换行符为 LF（兼容 Linux CI / 容器构建）
+* text=auto eol=lf
+
+# 明确二进制，避免被当作文本处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pyc binary
+*.pt binary
+*.db binary
+*.xlsx binary

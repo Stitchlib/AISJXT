@@ -1,0 +1,65 @@
+# ===== Python / 后端 =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+
+# ===== Node / 前端 =====
+node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-error.log*
+
+# ===== 运行时数据（数据库 / 导出） =====
+data/
+*.db
+*.db-shm
+*.db-wal
+edge/config/data/
+edge/data/
+*.xlsx
+
+# ===== 报告 / 测试产物（tfevents、冒烟截图等） =====
+edge/reports/tensorboard/
+*.tfevents.*
+frontend/ui-smoke-shots/
+frontend/smoke-shots/
+
+# ===== 后端运行时日志 / 临时响应 / 测试产物 =====
+edge/_backend.log
+edge/_cfg_resp.json
+edge/*.csv
+edge/test_*.csv
+edge/test_*.json
+edge/comprehensive_test_summary_*.md
+edge/models/
+edge/reports/
+
+# ===== 前端运行时日志 / vite 缓存 =====
+frontend/_frontend.log
+frontend/vite.config.js.timestamp-*.mjs
+
+# ===== 模型权重（大二进制；如需入库请取消下一行注释） =====
+*.pt
+
+# ===== 本地运行时配置（含机器绝对路径与演示凭据，由应用首次运行自动生成） =====
+edge/config/config.json
+
+# ===== 归档的历史/废弃制品（非源码） =====
+_archive_legacy/
+
+# ===== 代理 / 编辑器 / OS =====
+.workbuddy/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 根目录遗留的重复/失效 vite 配置（真实配置在 frontend/vite.config.js）
+/vite.config.js
+
+# ===== 环境变量 / 密钥 =====
+.env
+.env.*

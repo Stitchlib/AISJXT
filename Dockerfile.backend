@@ -1,0 +1,58 @@
+# 多阶段构建 - 后端
+FROM python:3.9-slim as backend-builder
+
+WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖文件
+COPY edge/requirements.txt .
+
+# 安装 Python 依赖
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制源代码
+COPY edge/src ./src
+COPY edge/main.py .
+COPY edge/config ./config
+
+# 多阶段构建 - 运行时
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# 创建非 root 用户
+RUN groupadd -r aibc && useradd -r -g aibc aibc
+
+# 从 builder 阶段复制已安装的依赖
+COPY --from=backend-builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=backend-builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
+
+# 复制应用代码
+COPY --from=backend-builder /app ./
+
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# 创建必要的目录
+RUN mkdir -p /app/data /app/logs /app/models && \
+    chown -R aibc:aibc /app
+
+# 切换到非 root 用户
+USER aibc
+
+# 暴露端口
+EXPOSE 8000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/api/v1/health', timeout=5)" || exit 1
+
+# 启动命令
+CMD ["python", "main.py"]

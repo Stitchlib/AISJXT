@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # 后端服务（FastAPI + SQLite，无外部依赖）
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: aibc-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 数据库与配置持久化（模型权重按需挂载）
+      - ./edge/data:/app/data
+      - ./edge/config:/app/config
+      - ./edge/models:/app/models
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+    networks:
+      - aibc-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 前端服务（Nginx 静态 + 反向代理）
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: aibc-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - aibc-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  aibc-network:
+    driver: bridge
