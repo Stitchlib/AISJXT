@@ -77,6 +77,21 @@ class AuthService:
             raise HTTPException(status_code=401, detail="用户不存在或已禁用")
         return _row_to_user(row)
 
+    def get_user_from_token(self, token: Optional[str]) -> Optional[User]:
+        """从裸令牌（如 MJPEG <img> URL 的 ?token= 参数）解析用户，失败返回 None。
+
+        供视频流等无法附带 Authorization 头头的场景使用。
+        """
+        if not token:
+            return None
+        payload = _decode_token(token, self._secret)
+        if not payload or "sub" not in payload:
+            return None
+        row = self._db.get_user_by_username(payload["sub"])
+        if not row or row["disabled"]:
+            return None
+        return _row_to_user(row)
+
     # ---- 用户管理（供 users 路由调用） ----
     def create_user(self, username, password, display_name="", role=UserRole.OPERATOR, disabled=False) -> int:
         if self._db.get_user_by_username(username):

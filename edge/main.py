@@ -34,6 +34,7 @@ from src.routers import (
     reports,
     system_health,
     users,
+    video,
 )
 from src.websocket_manager import ConnectionManager
 
@@ -110,6 +111,7 @@ for r in (
     reports.router,
     alerts.router,
     users.router,
+    video.router,
 ):
     app.include_router(r, prefix="/api/v1")
 

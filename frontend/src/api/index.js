@@ -15,6 +15,11 @@ export const cameraApi = {
   discover: (payload) => client.post('/cameras/discover', payload).then((r) => r.data),
   test: (payload) => client.post('/cameras/test', payload).then((r) => r.data),
   setActive: (id) => client.put(`/cameras/${id}/active`).then((r) => r.data),
+  // MJPEG 实时画面地址：<img> 无法附带 Authorization 头，故用 ?token= 传递 JWT
+  videoUrl: (id, fps = 15) => {
+    const token = localStorage.getItem('aiqc_token') || ''
+    return `/api/v1/cameras/${encodeURIComponent(id)}/video?token=${encodeURIComponent(token)}&fps=${fps}`
+  },
 }
 
 export const configApi = {

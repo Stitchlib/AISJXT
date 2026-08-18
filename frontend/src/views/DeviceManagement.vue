@@ -36,10 +36,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="resolution" label="分辨率" width="120" />
-        <el-table-column label="操作" width="190" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
             <el-tag v-if="row.id === activeId" type="success" size="small" style="margin-right: 6px">当前</el-tag>
             <el-button v-else type="primary" link size="small" @click="setActive(row)">设为当前</el-button>
+            <el-button type="success" link size="small" @click="openPreview(row)">预览</el-button>
             <el-button type="danger" link size="small" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -83,11 +84,29 @@
         <el-button type="primary" :loading="saving" @click="add">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="previewDialog" title="实时画面预览" width="700px">
+      <div class="preview-wrap">
+        <img v-if="previewUrl" :key="previewKey" :src="previewUrl" class="preview" alt="实时画面预览" @error="onPreviewError" />
+        <el-empty v-else description="无可预览设备" />
+        <el-alert
+          v-if="previewError"
+          type="error"
+          :closable="false"
+          :title="previewError"
+          style="margin-top: 8px"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="previewDialog = false">关闭</el-button>
+        <el-button type="primary" @click="reloadPreview">刷新预览</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cameraApi, configApi } from '@/api'
 import { actions, useStore } from '@/store'
@@ -110,6 +129,27 @@ const testing = ref(false)
 const discoverDialog = ref(false)
 const dform = reactive({ subnet: '192.168.1', username: '', password: '' })
 const discoverCreds = reactive({ username: '', password: '' })
+
+// 实时画面预览
+const previewDialog = ref(false)
+const previewId = ref('')
+const previewReload = ref(0)
+const previewError = ref('')
+const previewUrl = computed(() => (previewId.value ? cameraApi.videoUrl(previewId.value, 12) : ''))
+const previewKey = computed(() => `${previewId.value}-${previewReload.value}`)
+function openPreview(row) {
+  previewId.value = row.id
+  previewError.value = ''
+  previewReload.value += 1
+  previewDialog.value = true
+}
+function onPreviewError() {
+  previewError.value = '预览加载失败：摄像头可能已停用、网络不可达或令牌失效'
+}
+function reloadPreview() {
+  previewError.value = ''
+  previewReload.value += 1
+}
 
 function openAdd() {
   form.id = ''
@@ -169,6 +209,7 @@ async function add() {
     ElMessage.success('已添加设备')
     addDialog.value = false
     await load()
+    openPreview({ id: form.id, name: form.name })
   } catch (e) {
     ElMessage.error('添加失败：' + (e.response?.data?.detail || e.message))
   } finally {
@@ -259,4 +300,6 @@ onMounted(load)
 <style scoped>
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .controls { display: flex; gap: 8px; }
+.preview-wrap { width: 100%; min-height: 300px; background: #000; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.preview { width: 100%; display: block; }
 </style>

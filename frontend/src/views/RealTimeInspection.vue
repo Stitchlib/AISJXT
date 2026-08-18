@@ -21,13 +21,32 @@
     <el-row :gutter="16">
       <el-col :span="10">
         <el-card shadow="hover" style="min-height: 280px">
-          <div class="card-title">实时画面</div>
-          <div v-if="store.inspection.running && lastResult" class="frame-info">
-            <p>摄像头：<b>{{ lastResult.camera_id }}</b></p>
-            <p>图像：<span class="path">{{ lastResult.image_path || '—' }}</span></p>
-            <p v-if="lastResult.is_simulation"><el-tag size="small" type="warning">仿真数据</el-tag></p>
+          <div class="card-title">
+            实时画面
+            <span class="ts">{{ streamStatus }}</span>
           </div>
-          <el-empty v-else description="未运行或暂无画面" />
+          <div class="video-wrap">
+            <img
+              v-if="videoUrl"
+              :key="reloadKey"
+              :src="videoUrl"
+              class="video"
+              alt="实时画面"
+              @error="onVideoError"
+            />
+            <el-empty v-else description="请先选择摄像头" />
+            <el-alert
+              v-if="videoError"
+              class="video-err"
+              type="error"
+              :closable="false"
+              :title="videoError"
+            />
+          </div>
+          <div class="video-bar">
+            <el-button size="small" :disabled="!videoUrl" @click="reloadVideo">刷新画面</el-button>
+            <span class="hint">{{ selectedCamera || '—' }}</span>
+          </div>
         </el-card>
       </el-col>
       <el-col :span="14">
@@ -59,7 +78,7 @@
 </template>
 
 <script setup>
-import { inject, ref, computed, onMounted, onUnmounted } from 'vue'
+import { inject, ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useStore, actions } from '@/store'
 import { createWebSocket } from '@/utils/websocket'
@@ -70,6 +89,24 @@ const selectedCamera = ref('')
 const cameraError = ref('')
 const error = ref('')
 let ws = null
+
+const reloadKey = ref(0)
+const videoError = ref('')
+const videoUrl = computed(() => (selectedCamera.value ? cameraApi.videoUrl(selectedCamera.value, 15) : ''))
+const streamStatus = computed(() => (store.inspection.running ? '检测直播中' : '画面预览中'))
+
+watch(selectedCamera, () => {
+  videoError.value = ''
+  reloadKey.value += 1
+})
+
+function onVideoError() {
+  videoError.value = '画面加载失败：请确认摄像头已启用、网络可达，且登录令牌有效'
+}
+function reloadVideo() {
+  videoError.value = ''
+  reloadKey.value += 1
+}
 
 const lastResult = computed(() => store.inspection.last_result)
 
@@ -143,4 +180,9 @@ onUnmounted(() => ws && ws.close())
 .metrics { font-size: 14px; color: #606266; margin: 4px 0 12px; }
 .frame-info { font-size: 14px; color: #606266; }
 .path { color: #909399; word-break: break-all; }
+.video-wrap { position: relative; width: 100%; min-height: 220px; background: #000; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.video { width: 100%; display: block; }
+.video-err { position: absolute; left: 8px; right: 8px; bottom: 8px; }
+.video-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.video-bar .hint { font-size: 12px; color: #909399; word-break: break-all; }
 </style>
