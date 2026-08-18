@@ -43,7 +43,7 @@ class CameraManager:
                     type=CameraType(normalize_camera_type(c.type)),
                     source=c.source,
                     enabled=c.enabled,
-                    status="unknown",
+                    status=getattr(c, "status", "unknown") or "unknown",
                 )
             except Exception as e:  # 单个摄像头配置异常不应阻塞其余设备装载
                 logger.warning("摄像头配置 %s 装载失败，已跳过: %s", getattr(c, "id", "?"), e)

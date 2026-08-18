@@ -111,6 +111,8 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request):
                 c.name = body.name
             if body.enabled is not None:
                 c.enabled = body.enabled
+            if body.status is not None:
+                c.status = body.status
             if body.type is not None:
                 c.type = normalize_camera_type(body.type)
             # 凭据/来源更新：重新注入鉴权信息

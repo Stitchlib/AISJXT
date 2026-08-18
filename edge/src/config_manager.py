@@ -28,6 +28,9 @@ class CameraConfig(BaseModel):
     # 注意：取流 URL 已内嵌 user:pass@，这里单独保存便于展示/更新/重连。
     username: Optional[str] = None
     password: Optional[str] = None
+    # 连接状态（持久化）：online / offline / unknown。运行时可由帧总线实际取流情况回写，
+    # 也允许通过 PUT /cameras/{id} 显式置为 online 以反映"真实摄像头已接入"。
+    status: str = "unknown"
 
 
 class AppConfig(BaseModel):
@@ -139,7 +142,8 @@ class ConfigManager:
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = self.config.model_dump()
+        # 兼容 pydantic v1（.dict()）与 v2（.model_dump()）：运行环境版本差异不应让配置保存失败
+        payload = self.config.model_dump() if hasattr(self.config, "model_dump") else self.config.dict()
         if self.path.suffix in (".yaml", ".yml"):
             try:
                 import yaml  # type: ignore
