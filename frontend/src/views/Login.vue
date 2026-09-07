@@ -34,7 +34,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import { authApi } from '@/api'
-import { setToken } from '@/api/client'
+import { setToken, setUser } from '@/api/client'
 import { actions } from '@/store'
 
 const router = useRouter()
@@ -58,6 +58,7 @@ async function onSubmit() {
       const data = await authApi.login(form.username, form.password)
       setToken(data.access_token)
       actions.setUser(data.user)
+      setUser(data.user) // 持久化到 localStorage，供路由守卫同步读取角色
       ElMessage.success('登录成功')
       router.push('/dashboard')
     } catch (e) {

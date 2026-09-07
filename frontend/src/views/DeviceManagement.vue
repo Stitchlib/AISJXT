@@ -26,7 +26,7 @@
             <el-image
               v-if="row.enabled"
               :src="snapshotUrl(row.id)"
-              :preview-src-list="[previewShotUrl(row.id)]"
+              :preview-src-list="previewShotUrl(row.id) ? [previewShotUrl(row.id)] : []"
               fit="cover"
               class="thumb"
               hide-on-click-modal
@@ -57,11 +57,14 @@
           </template>
         </el-table-column>
         <el-table-column prop="resolution" label="分辨率" width="120" />
-        <el-table-column label="操作" width="230" fixed="right">
+        <el-table-column label="操作" width="290" fixed="right">
           <template #default="{ row }">
             <el-tag v-if="row.id === activeId" type="success" size="small" style="margin-right: 6px">当前</el-tag>
             <el-button v-else type="primary" link size="small" @click="setActive(row)">设为当前</el-button>
             <el-button type="success" link size="small" @click="openPreview(row)">预览</el-button>
+            <el-button type="warning" link size="small" @click="openRoi(row)">
+              ROI{{ row.roi && row.roi.length ? '(' + row.roi.length + ')' : '' }}
+            </el-button>
             <el-button type="danger" link size="small" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -99,13 +102,13 @@
         <el-form-item label="密码"><el-input v-model="form.password" type="password" placeholder="匿名可留空" show-password /></el-form-item>
         <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>
-      <div v-if="addPreviewUrl" class="add-preview">
+      <div v-if="addPreviewSrc" class="add-preview">
         <div class="add-preview-head">
           <span>实时预览（保存前先确认可取流）</span>
           <el-button size="small" text type="primary" @click="reloadAddPreview">刷新预览</el-button>
         </div>
         <div class="add-preview-wrap">
-          <img v-if="addPreviewUrl" :key="addPreviewKey" :src="addPreviewUrl" class="add-preview-img" alt="摄像头预览" @error="onAddPreviewError" />
+          <img v-if="addPreviewSrc" :key="addPreviewKey" :src="addPreviewSrc" class="add-preview-img" alt="摄像头预览" @error="onAddPreviewError" />
           <el-alert v-if="addPreviewError" type="warning" :closable="false" :title="addPreviewError" />
         </div>
       </div>
@@ -118,7 +121,7 @@
 
     <el-dialog v-model="previewDialog" title="实时画面预览" width="700px">
       <div class="preview-wrap">
-        <img v-if="previewUrl" :key="previewKey" :src="previewUrl" class="preview" alt="实时画面预览" @error="onPreviewError" />
+        <img v-if="previewSrc" :key="previewKey" :src="previewSrc" class="preview" alt="实时画面预览" @error="onPreviewError" />
         <el-empty v-else description="无可预览设备" />
         <el-alert
           v-if="previewError"
@@ -131,6 +134,52 @@
       <template #footer>
         <el-button @click="previewDialog = false">关闭</el-button>
         <el-button type="primary" @click="reloadPreview">刷新预览</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- G6 ROI 检测区域编辑：在画面上拖拽矩形，归一化存储 -->
+    <el-dialog v-model="roiDialog" :title="'ROI 检测区域 — ' + (roiCamera?.name || roiCamera?.id || '')" width="720px">
+      <el-alert
+        type="info"
+        :closable="false"
+        style="margin-bottom: 10px"
+        title="在画面上按住鼠标拖拽画出检测区域（可画多个）；只有区域内的目标会被检测，区域外干扰（传送带边缘、隔壁工位）不再计入。不配置则全画面检测。"
+      />
+      <div
+        ref="roiCanvas"
+        class="roi-canvas"
+        @mousedown="onRoiMouseDown"
+        @mousemove="onRoiMouseMove"
+        @mouseup="onRoiMouseUp"
+        @mouseleave="onRoiMouseUp"
+      >
+        <img v-if="roiSnapshot" :key="roiSnapKey" :src="roiSnapshot" class="roi-bg" alt="ROI 底图" @error="roiSnapshot = ''" />
+        <div v-else class="roi-bg-placeholder">快照加载失败，仍可直接拖拽画框</div>
+        <div
+          v-for="(r, i) in roiRects"
+          :key="i"
+          class="roi-rect"
+          :style="{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.w * 100 + '%', height: r.h * 100 + '%' }"
+        >
+          <span class="roi-tag">ROI {{ i + 1 }}</span>
+          <span class="roi-del" title="删除" @mousedown.stop @click="removeRoi(i)">×</span>
+        </div>
+        <div
+          v-if="drawingRect"
+          class="roi-rect drawing"
+          :style="{ left: drawingRect.x * 100 + '%', top: drawingRect.y * 100 + '%', width: drawingRect.w * 100 + '%', height: drawingRect.h * 100 + '%' }"
+        />
+      </div>
+      <div class="roi-list">
+        <span v-if="!roiRects.length" class="roi-empty">未配置（全画面检测）</span>
+        <code v-for="(r, i) in roiRects" :key="i" class="roi-item">
+          ROI{{ i + 1 }}: x={{ r.x.toFixed(2) }}, y={{ r.y.toFixed(2) }}, w={{ r.w.toFixed(2) }}, h={{ r.h.toFixed(2) }}
+        </code>
+      </div>
+      <template #footer>
+        <el-button @click="clearRoi">清空（全画面）</el-button>
+        <el-button @click="roiDialog = false">取消</el-button>
+        <el-button type="primary" :loading="roiSaving" @click="saveRoi">保存 ROI</el-button>
       </template>
     </el-dialog>
   </div>
@@ -161,39 +210,80 @@ const discoverDialog = ref(false)
 const dform = reactive({ subnet: '192.168.1', username: '', password: '' })
 const discoverCreds = reactive({ username: '', password: '' })
 
-// 实时画面预览
+// 实时画面预览（M7：通过一次性 stream ticket 取流，避免 JWT 进 URL）
 const previewDialog = ref(false)
 const previewId = ref('')
 const previewReload = ref(0)
 const previewError = ref('')
-const previewUrl = computed(() => (previewId.value ? cameraApi.videoUrl(previewId.value, 12) : ''))
+const previewSrc = ref('')
 const previewKey = computed(() => `${previewId.value}-${previewReload.value}`)
+async function loadPreview() {
+  const id = previewId.value
+  if (!id) {
+    previewSrc.value = ''
+    return
+  }
+  previewError.value = ''
+  try {
+    previewSrc.value = await cameraApi.videoUrl(id, 12)
+  } catch (e) {
+    previewSrc.value = ''
+    previewError.value = '预览地址获取失败：' + (e.response?.data?.detail || e.message)
+  }
+}
 
 // 添加对话框内嵌"临时预览"：填了来源就直接验证是否可取流，存之前先看画面
 const addPreviewReload = ref(0)
 const addPreviewError = ref('')
-const addPreviewUrl = computed(() =>
-  form.source && form.source.trim()
-    ? cameraApi.previewUrl(form.source.trim(), form.username, form.password, 12)
-    : ''
-)
+const addPreviewSrc = ref('')
 const addPreviewKey = computed(() => `add-${addPreviewReload.value}`)
+async function loadAddPreview() {
+  const src = form.source && form.source.trim()
+  if (!src) {
+    addPreviewSrc.value = ''
+    return
+  }
+  addPreviewError.value = ''
+  try {
+    addPreviewSrc.value = await cameraApi.previewUrl(src, form.username, form.password, 12)
+  } catch (e) {
+    addPreviewSrc.value = ''
+    addPreviewError.value = '预览地址获取失败：' + (e.response?.data?.detail || e.message)
+  }
+}
 function onAddPreviewError() {
   addPreviewError.value = '该来源暂时取不到画面（地址/凭据/网络不可达，或设备未联网）'
 }
 function reloadAddPreview() {
   addPreviewError.value = ''
   addPreviewReload.value += 1
+  loadAddPreview()
 }
 
-// 缩略图自动刷新（10s 一次），避免浏览器长期缓存旧画面
-const thumbTick = ref(0)
-let thumbTimer = null
+// 缩略图：每个摄像头用一次性 stream ticket 取快照，避免 JWT 进 URL（M7）
+const snaps = reactive({})
+const snapPreviews = reactive({})
+async function loadSnap(id) {
+  if (!id) return
+  try {
+    // 缩略图与放大预览各需一个独立 ticket（<img> 与 el-image 预览会分别请求）
+    snaps[id] = await cameraApi.snapshotUrl(id, true, 80)
+    snapPreviews[id] = await cameraApi.snapshotUrl(id, true, 90)
+  } catch {
+    snaps[id] = ''
+    snapPreviews[id] = ''
+  }
+}
 function snapshotUrl(id) {
-  return cameraApi.snapshotUrl(id, true, 70) + `&_t=${thumbTick.value}`
+  return snaps[id] || ''
 }
 function previewShotUrl(id) {
-  return cameraApi.snapshotUrl(id, true, 90) + `&_t=${thumbTick.value}`
+  return snapPreviews[id] || ''
+}
+// 缩略图每 10s 重新换取 ticket 刷新，避免浏览器长期缓存旧画面
+let thumbTimer = null
+function refreshSnaps() {
+  cameras.value.forEach((c) => c.enabled && loadSnap(c.id))
 }
 
 const TYPE_LABELS = {
@@ -213,6 +303,7 @@ function openPreview(row) {
   previewError.value = ''
   previewReload.value += 1
   previewDialog.value = true
+  loadPreview()
 }
 function onPreviewError() {
   previewError.value = '预览加载失败：摄像头可能已停用、网络不可达或令牌失效'
@@ -220,6 +311,7 @@ function onPreviewError() {
 function reloadPreview() {
   previewError.value = ''
   previewReload.value += 1
+  loadPreview()
 }
 
 function openAdd() {
@@ -243,6 +335,7 @@ watch(
       form.type = inferred
     }
     addPreviewError.value = '' // 改了来源就清掉上一次的预览错误
+    loadAddPreview() // 来源变化即重新换取预览 ticket
   }
 )
 
@@ -253,6 +346,7 @@ async function load() {
     const list = await cameraApi.list()
     cameras.value = list
     store.cameras = list
+    refreshSnaps()
     try {
       const cfg = await configApi.get()
       activeId.value = cfg.active_camera_id || (list[0] && list[0].id) || ''
@@ -305,6 +399,7 @@ async function toggleEnabled(row, val) {
   try {
     await cameraApi.update(row.id, { enabled: val })
     ElMessage.success(val ? '已启用' : '已停用')
+    if (val) loadSnap(row.id) // 启用后立刻换取缩略图 ticket
   } catch (e) {
     row.enabled = !val
     ElMessage.error('操作失败：' + (e.response?.data?.detail || e.message))
@@ -381,11 +476,101 @@ async function setActive(row) {
   }
 }
 
+// ---- G6 ROI 检测区域编辑（拖拽画矩形，归一化存储） ----
+const roiDialog = ref(false)
+const roiCamera = ref(null)
+const roiRects = ref([])
+const roiCanvas = ref(null)
+const roiSaving = ref(false)
+const roiSnapshot = ref('')
+const roiSnapKey = ref(0)
+const drawingRect = ref(null)
+let roiDragStart = null
+
+async function openRoi(row) {
+  roiCamera.value = row
+  roiRects.value = (row.roi || []).map((r) => ({ ...r }))
+  drawingRect.value = null
+  roiDragStart = null
+  roiDialog.value = true
+  // 取一张快照做底图（仅辅助对位，失败不影响画框）
+  roiSnapshot.value = ''
+  try {
+    roiSnapshot.value = await cameraApi.snapshotUrl(row.id, false, 80)
+    roiSnapKey.value += 1
+  } catch {
+    roiSnapshot.value = ''
+  }
+}
+
+function roiPoint(e) {
+  const el = roiCanvas.value
+  if (!el) return null
+  const rect = el.getBoundingClientRect()
+  const x = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+  const y = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))
+  return { x, y }
+}
+
+function onRoiMouseDown(e) {
+  if (e.button !== 0) return
+  const p = roiPoint(e)
+  if (!p) return
+  roiDragStart = p
+  drawingRect.value = { x: p.x, y: p.y, w: 0, h: 0 }
+}
+
+function onRoiMouseMove(e) {
+  if (!roiDragStart) return
+  const p = roiPoint(e)
+  if (!p) return
+  drawingRect.value = {
+    x: Math.min(roiDragStart.x, p.x),
+    y: Math.min(roiDragStart.y, p.y),
+    w: Math.abs(p.x - roiDragStart.x),
+    h: Math.abs(p.y - roiDragStart.y),
+  }
+}
+
+function onRoiMouseUp() {
+  if (!roiDragStart) return
+  const r = drawingRect.value
+  if (r && r.w > 0.01 && r.h > 0.01) {
+    roiRects.value.push({ x: +r.x.toFixed(4), y: +r.y.toFixed(4), w: +r.w.toFixed(4), h: +r.h.toFixed(4) })
+  }
+  roiDragStart = null
+  drawingRect.value = null
+}
+
+function removeRoi(i) {
+  roiRects.value.splice(i, 1)
+}
+
+function clearRoi() {
+  roiRects.value = []
+}
+
+async function saveRoi() {
+  const cam = roiCamera.value
+  if (!cam) return
+  roiSaving.value = true
+  try {
+    const updated = await cameraApi.update(cam.id, { roi: roiRects.value })
+    ElMessage.success(roiRects.value.length ? `已保存 ${roiRects.value.length} 个 ROI 区域` : '已清空 ROI（全画面检测）')
+    roiDialog.value = false
+    await load()
+    void updated
+  } catch (e) {
+    ElMessage.error('保存失败：' + (e.response?.data?.detail || e.message))
+  } finally {
+    roiSaving.value = false
+  }
+}
+
 onMounted(() => {
   load()
-  thumbTimer = setInterval(() => {
-    thumbTick.value += 1
-  }, 10000)
+  refreshSnaps()
+  thumbTimer = setInterval(refreshSnaps, 10000)
 })
 onUnmounted(() => {
   if (thumbTimer) clearInterval(thumbTimer)
@@ -404,4 +589,15 @@ onUnmounted(() => {
 .thumb { width: 90px; height: 50px; border-radius: 4px; overflow: hidden; background: #111; display: block; }
 .thumb-placeholder { width: 90px; height: 50px; border-radius: 4px; background: #f4f4f5; color: #909399; font-size: 12px; display: flex; align-items: center; justify-content: center; }
 .thumb-placeholder.disabled { background: #f0f0f0; color: #c0c4cc; }
+/* G6 ROI 编辑器 */
+.roi-canvas { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #111; border-radius: 6px; overflow: hidden; cursor: crosshair; user-select: none; }
+.roi-bg { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.roi-bg-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #909399; font-size: 13px; }
+.roi-rect { position: absolute; border: 2px solid #f5a623; background: rgba(245, 166, 35, 0.12); box-sizing: border-box; }
+.roi-rect.drawing { border-style: dashed; }
+.roi-tag { position: absolute; left: 2px; top: 2px; font-size: 11px; color: #fff; background: rgba(245, 166, 35, 0.85); padding: 0 4px; border-radius: 2px; line-height: 16px; }
+.roi-del { position: absolute; right: 0; top: 0; width: 18px; height: 18px; line-height: 16px; text-align: center; color: #fff; background: rgba(220, 60, 60, 0.9); cursor: pointer; font-size: 14px; border-radius: 0 0 0 3px; }
+.roi-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 22px; }
+.roi-item { font-size: 12px; background: #f4f4f5; padding: 2px 6px; border-radius: 3px; color: #606266; }
+.roi-empty { font-size: 12px; color: #909399; }
 </style>

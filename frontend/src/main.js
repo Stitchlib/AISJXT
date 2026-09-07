@@ -5,7 +5,7 @@ import App from './App.vue'
 import router from './router'
 import { setupStore, actions } from './store'
 import { authApi } from './api'
-import { clearToken } from './api/client'
+import { clearToken, setUser, clearUser } from './api/client'
 
 const app = createApp(App)
 app.use(router)
@@ -17,9 +17,13 @@ const { token } = setupStore(app)
 if (token) {
   authApi
     .me()
-    .then((u) => actions.setUser(u))
+    .then((u) => {
+      actions.setUser(u)
+      setUser(u) // 持久化到 localStorage，供路由守卫同步读取角色
+    })
     .catch(() => {
       clearToken()
+      clearUser()
       if (window.location.hash !== '#/login') window.location.hash = '#/login'
     })
 }

@@ -12,6 +12,11 @@
             <el-option v-for="c in cameras" :key="c.id" :label="c.name || c.id" :value="c.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="批次">
+          <el-select v-model="filters.batch_id" placeholder="全部" clearable style="width: 200px" @change="onFilter">
+            <el-option v-for="b in batches" :key="b.batch_no" :label="b.batch_no + (b.product ? '（' + b.product + '）' : '')" :value="b.batch_no" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="仅看有缺陷">
           <el-switch v-model="filters.defect_only" @change="onFilter" />
         </el-form-item>
@@ -35,6 +40,22 @@
         </el-table-column>
         <el-table-column prop="timestamp" label="时间" width="200" />
         <el-table-column prop="camera_id" label="摄像头" width="140" />
+        <el-table-column label="现场图" width="110" align="center">
+          <template #default="{ row }">
+            <el-image
+              v-if="thumbs[row.id]"
+              :src="thumbs[row.id]"
+              :preview-src-list="[thumbs[row.id]]"
+              fit="cover"
+              preview-teleported
+              style="width: 80px; height: 60px; border-radius: 4px"
+            />
+            <el-tooltip v-else-if="row.image_path" content="图片可能已被保留期/配额清理" placement="top">
+              <span class="img-gone">已清理</span>
+            </el-tooltip>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="缺陷数/总数" width="140">
           <template #default="{ row }">{{ row.defect_count }} / {{ row.total_count }}</template>
         </el-table-column>
@@ -68,24 +89,33 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { detectionApi, cameraApi } from '@/api'
+import { detectionApi, cameraApi, batchApi } from '@/api'
 import { downloadBlob } from '@/utils/download'
 
 const loading = ref(false)
 const exporting = ref(false)
 const items = ref([])
 const cameras = ref([])
+const batches = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 
-const filters = reactive({ camera_id: '', defect_only: false })
+const filters = reactive({ camera_id: '', batch_id: '', defect_only: false })
 
 async function loadCameras() {
   try {
     cameras.value = await cameraApi.list()
   } catch {
     cameras.value = []
+  }
+}
+
+async function loadBatches() {
+  try {
+    batches.value = await batchApi.list()
+  } catch {
+    batches.value = []
   }
 }
 
@@ -96,6 +126,7 @@ async function load() {
       page: page.value,
       page_size: pageSize.value,
       camera_id: filters.camera_id || undefined,
+      batch_id: filters.batch_id || undefined,
       defect_only: filters.defect_only,
     })
     items.value = data.items || []
@@ -136,6 +167,7 @@ async function exportCsv() {
 
 onMounted(() => {
   loadCameras()
+  loadBatches()
   load()
 })
 </script>
@@ -144,4 +176,5 @@ onMounted(() => {
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .defect-list { padding: 8px 12px; }
 .defect-item { display: flex; gap: 16px; align-items: center; padding: 2px 0; font-size: 13px; color: #606266; }
+.img-gone { font-size: 12px; color: #c0c4cc; }
 </style>

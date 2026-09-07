@@ -3,7 +3,10 @@
     <div class="head">
       <h2>质检报告</h2>
       <div class="ops">
-        <el-select v-model="bucket" style="width: 140px" @change="load">
+        <el-select v-model="selectedBatch" placeholder="全部批次" clearable style="width: 200px" @change="load">
+          <el-option v-for="b in batches" :key="b.batch_no" :label="b.batch_no + (b.product ? '（' + b.product + '）' : '')" :value="b.batch_no" />
+        </el-select>
+        <el-select v-model="bucket" style="width: 140px" :disabled="!!selectedBatch" @change="load">
           <el-option label="按天" value="day" />
           <el-option label="按小时" value="hour" />
           <el-option label="按周" value="week" />
@@ -54,13 +57,15 @@
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
-import { reportsApi } from '@/api'
+import { reportsApi, batchApi } from '@/api'
 import { downloadBlob } from '@/utils/download'
 
 const loading = ref(false)
 const exportingExcel = ref(false)
 const exportingCsv = ref(false)
 const bucket = ref('day')
+const selectedBatch = ref('')
+const batches = ref([])
 
 const summary = reactive({ total: 0, defect_count: 0, defect_rate: 0, avg_processing_ms: 0 })
 const byType = ref([])
@@ -71,16 +76,31 @@ const trendChart = ref(null)
 let pieInst = null
 let trendInst = null
 
+async function loadBatches() {
+  try {
+    batches.value = await batchApi.list()
+  } catch {
+    batches.value = []
+  }
+}
+
 async function load() {
   loading.value = true
   try {
-    const data = await reportsApi.summary({ bucket: bucket.value })
+    let data
+    if (selectedBatch.value) {
+      // 第二期 G4：按批次聚合报表（后端 report_by_batch）
+      data = await batchApi.report(selectedBatch.value)
+      trend.value = []
+    } else {
+      data = await reportsApi.summary({ bucket: bucket.value })
+      trend.value = data.trend || []
+    }
     summary.total = data.total || 0
     summary.defect_count = data.defect_count || 0
     summary.defect_rate = data.defect_rate || 0
     summary.avg_processing_ms = data.avg_processing_ms || 0
     byType.value = data.by_type || []
-    trend.value = data.trend || []
     await nextTick()
     renderPie()
     renderTrend()
@@ -172,6 +192,7 @@ function onResize() {
 }
 
 onMounted(() => {
+  loadBatches()
   load()
   window.addEventListener('resize', onResize)
 })

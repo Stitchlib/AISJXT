@@ -36,6 +36,30 @@
           <el-input v-model="form.model_path" placeholder="如 models/best.pt" />
         </el-form-item>
 
+        <el-divider content-position="left">缺陷图片留存</el-divider>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="保存模式">
+              <el-select v-model="form.save_image_mode" style="width: 100%">
+                <el-option label="仅缺陷帧" value="defect_only" />
+                <el-option label="全部帧" value="all" />
+                <el-option label="抽样（1/10）" value="sample" />
+                <el-option label="不保存" value="none" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="磁盘配额(GB)">
+              <el-input-number v-model="form.image_quota_gb" :min="0.1" :step="0.5" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="保留天数">
+              <el-input-number v-model="form.image_retention_days" :min="1" :step="1" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
         <el-divider content-position="left">SMTP 邮件推送</el-divider>
         <el-form-item label="启用 SMTP">
           <el-switch v-model="form.smtp_enabled" />
@@ -136,6 +160,9 @@ function assign(def) {
   form.enable_simulation = !!def.enable_simulation
   form.model_path = def.model_path || ''
   form.push_interval_frames = def.push_interval_frames ?? 10
+  form.save_image_mode = def.save_image_mode || 'defect_only'
+  form.image_quota_gb = def.image_quota_gb ?? 5
+  form.image_retention_days = def.image_retention_days ?? 30
   form.smtp_enabled = !!def.smtp_enabled
   form.smtp_host = def.smtp_host || ''
   form.smtp_port = def.smtp_port ?? 465

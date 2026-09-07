@@ -13,6 +13,42 @@
       </el-col>
     </el-row>
 
+    <!-- L9 业务级健康指标 -->
+    <el-row :gutter="16" style="margin-top: 16px">
+      <el-col :span="6">
+        <el-card shadow="hover">推理延迟 P50：<b>{{ health?.inference_latency_ms?.p50 ?? '--' }} ms</b></el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">推理延迟 P95：<b>{{ health?.inference_latency_ms?.p95 ?? '--' }} ms</b></el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">
+          帧丢帧率：<b>{{ health?.frame_drop_rate != null ? (health.frame_drop_rate * 100).toFixed(2) : '--' }}%</b>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">WS 在线连接：<b>{{ health?.websocket_clients ?? '--' }}</b></el-card>
+      </el-col>
+    </el-row>
+    <el-row :gutter="16" style="margin-top: 16px">
+      <el-col :span="6">
+        <el-card shadow="hover">DB 大小：<b>{{ health?.db_size_mb ?? '--' }} MB</b></el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">写入 QPS：<b>{{ health?.write_qps ?? '--' }}</b></el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">检测器模式：<b>{{ health?.detector_mode ?? '--' }}</b></el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">
+          配置状态：
+          <el-tag v-if="health?.config_degraded" type="danger" size="small">降级</el-tag>
+          <el-tag v-else type="success" size="small">正常</el-tag>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-card shadow="hover" style="margin-top: 16px">
       <div ref="chart" style="height: 300px"></div>
     </el-card>

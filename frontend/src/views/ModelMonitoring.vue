@@ -2,7 +2,10 @@
   <div>
     <div class="head">
       <h2>模型监控</h2>
-      <span v-if="activeId" class="active-tip">当前激活模型：<b>{{ activeName }}</b></span>
+      <div class="ops">
+        <el-button :loading="exportingSamples" @click="exportSamples">导出训练样本</el-button>
+        <span v-if="activeId" class="active-tip">当前激活模型：<b>{{ activeName }}</b></span>
+      </div>
     </div>
 
     <el-card v-loading="loading" shadow="hover" style="margin-bottom: 16px">
@@ -81,9 +84,11 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { modelApi } from '@/api'
+import { downloadBlob } from '@/utils/download'
 
 const loading = ref(false)
 const uploading = ref(false)
+const exportingSamples = ref(false)
 const list = ref([])
 const activeId = ref(null)
 const selectedFile = ref(null)
@@ -171,8 +176,27 @@ async function upload() {
   }
 }
 
+async function exportSamples() {
+  exportingSamples.value = true
+  try {
+    // 第二期 1.3：导出已判定（confirmed/false_positive）缺陷帧 + 标注为 YOLO 目录 zip
+    const blob = await modelApi.exportSamples({ verdicts: 'confirmed,false_positive' })
+    downloadBlob(blob, `training_samples_${Date.now()}.zip`)
+    ElMessage.success('训练样本已导出')
+  } catch (e) {
+    ElMessage.error('导出失败：' + (e.response?.data?.detail || e.message))
+  } finally {
+    exportingSamples.value = false
+  }
+}
+
 onMounted(load)
 </script>
+
+<style scoped>
+.head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.ops { display: flex; align-items: center; gap: 12px; }
+</style>
 
 <style scoped>
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
