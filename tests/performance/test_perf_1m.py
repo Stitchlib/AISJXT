@@ -26,6 +26,11 @@ import src.config_manager as cm_mod  # noqa: E402
 from main import app  # noqa: E402
 
 N = int(os.environ.get("AIQC_PERF_ROWS", "1000000"))
+
+# perf 标记：CI 门禁排除（`-m "not perf"`），本地/验收机专项运行。
+# 时间断言（分页<100ms/聚合<500ms）在共享 CI runner 上不可靠，且为
+# 2026-08-18 起远端 CI 长期红灯的根因。
+pytestmark = pytest.mark.perf
 PAGE_THRESHOLD = 0.10        # 100ms
 REPORT_THRESHOLD = 0.50      # 500ms
 CSV_MAX_BYTES = 200 * 1024 * 1024  # 200MB

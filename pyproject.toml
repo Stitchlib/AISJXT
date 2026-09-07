@@ -16,3 +16,12 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
+
+# pytest 配置：注册 perf 标记（第三期任务 0.2）
+# 百万行性能验收依赖本地/专用验收机的时间基线，共享 CI runner 上天然不稳定，
+# 不作为 CI 硬门禁；CI 用 `-m "not perf"` 排除，本地验收仍跑
+# `pytest tests/performance -m perf`。
+[tool.pytest.ini_options]
+markers = [
+    "perf: 百万级数据性能验收（时间敏感，仅在受控环境运行）",
+]
