@@ -1,9 +1,22 @@
 # AI 视觉质检系统（轻量化边缘版）
 
+[![CI](https://github.com/Stitchlib/AISJXT/actions/workflows/ci.yml/badge.svg)](https://github.com/Stitchlib/AISJXT/actions/workflows/ci.yml)
+
 基于深度学习的工业外观缺陷检测系统：边缘侧实时推理 + 云端/本地 Web 看板，覆盖设备管理、实时质检、模型版本、报表导出、告警与用户权限。
 
 > **状态说明（重要）**：本仓库早期文档存在大量"100% 完成 / 生产就绪"的虚构声明，实际业务源码当时为空。
 > 当前代码为**从零真实构建、可运行、测试覆盖**的版本。所有"已实现"项均以 `pytest` 与前端构建产物为准。
+
+## 质量门禁（CI）
+
+| 门禁 | 标准 |
+|------|------|
+| 后端测试覆盖率 | `pytest --cov=edge/src --cov-fail-under=75`（当前实测约 81%，随阶段递增） |
+| 静态检查 | `ruff check edge/ tests/`（E4/E7/E9/F：未定义名称、未使用导入、语法级错误） |
+| 前端 | `npm run lint` + 单测 + `npm run build` |
+| 镜像构建 | backend / frontend Docker 多阶段构建 |
+
+> perf（百万行性能验收）与 network_scan（依赖真实局域网摄像头）用例不在 CI 门禁内，本地/验收机专项运行。
 
 ---
 
