@@ -143,8 +143,23 @@ docker compose up -d --build
  （`AIQC_SECRET_KEY` / `AIQC_ADMIN_PASSWORD`）。未覆盖时启动日志明确告警，不静默放行。
 - **配置接口脱敏与越权防护（H1/M5）**：`GET /config` 仅返回白名单字段（阈值、fps、缺陷类型等），
   `secret_key` 与明文 SMTP 口令永不外泄；`PUT /config` 仅 admin 可调，viewer 返回 403。
-- **WebSocket 鉴权（H2）**：`/ws` 连接须携带 `?token=` 或首帧 `{"action":"auth","token":...}`；
-  未授权立即关闭（码 4401）；非管理员发送 start/stop 被拒（码 4403）。
+- **WebSocket 鉴权与一次性票据（H2/1.3）**：`/ws` 握手支持三种方式（按优先级）：
+  `?ticket=<一次性票据>`（推荐，先 `POST /api/v1/ws-ticket` 用 Bearer 令牌换取，30 秒有效、
+  绑定用户身份、一次性消费，JWT 不再进入 URL/访问日志）→ `?token=<JWT>`（兼容保留）→
+  首帧 `{"action":"auth","token":...}` 兜底。未授权立即关闭（码 4401）；
+  WS 控制面与 HTTP 权限一致：启停检测需 operator+（viewer 收到码 4403）。
+- **权限矩阵（RBAC，1.1/H2）**：三角色最小权限，越权尝试写入审计日志（`action=rbac_denied`）。
+
+  | 操作 | viewer | operator | admin |
+  |------|--------|----------|-------|
+  | 只读（列表/状态/报表/审计查看） | ✅ | ✅ | ✅ |
+  | 检测启停（HTTP + WS）、摄像头增改普通字段、设当前、发现、连接测试 | ❌ 403 | ✅ | ✅ |
+  | 摄像头来源/凭据修改 | ❌ 403 | ❌ 403 | ✅ |
+  | 摄像头删除、用户管理、配置修改、备份 | ❌ 403 | ❌ 403 | ✅ |
+
+- **摄像头凭据脱敏（1.2/H3）**：所有摄像头 API 响应中 `source` 一律为掩码值
+  （`rtsp://user:***@host`，另附 `source_masked` 字段），明文密码只存在于内部取流链路与配置；
+  前端把掩码值原样回传时后端视为"未修改"，绝不写穿真实凭据；编辑对话框中账号/密码留空=不修改。
 - **CORS 收敛（M8）**：`allow_origins` 由 `AIQC_ALLOWED_ORIGINS`（逗号分隔）注入，默认空（仅同源）；
   Nginx 反代场景下无需跨域。
 - **视频流鉴权（M7）**：MJPEG 流不再使用 `?token=<JWT>`（避免令牌进入访问日志/浏览器历史），
@@ -155,6 +170,8 @@ docker compose up -d --build
   admin 可在「用户管理 → 审计日志」查看流水（who/what/when/ip）。
 - **配置健壮性（M12）**：`config.json` 解析失败时自动备份为 `config.json.corrupt-{ts}` 并标记降级，
   `/system-health` 暴露 `config_degraded` 状态，绝不静默回退到空配置导致配置清零。
+- **配置文件权限（部署要求）**：`edge/config/config.json` 含摄像头凭据与 SMTP 口令，生产部署须限制为
+  `chmod 600 config.json`（属主可读写，Windows 下可对文件设置仅服务账户可读），并避免提交到版本库。
 - **监控指标（L9）**：`/system-health` 输出推理延迟 P50/P95、帧丢帧率、WS 在线连接数、DB 大小与写入 QPS、
   检测器模式与配置状态，供仪表盘与压测观察。
 

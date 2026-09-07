@@ -201,5 +201,9 @@ def test_add_camera_with_credentials(client):
         headers=h,
     )
     assert r.status_code == 201, r.text
-    # source 应已注入凭据
-    assert "admin:56789-abc@" in r.json()["source"]
+    # source 应已注入凭据（第三期 1.2：API 响应一律脱敏，明文只在内部配置）
+    assert "admin:***@" in r.json()["source"]
+    assert "56789-abc" not in r.text
+    assert r.json()["source_masked"] == "rtsp://admin:***@192.168.1.60:554/stream1"
+    cfg = next(c for c in client.app.state.cm.get().cameras if c.id == "cam_cred_1")
+    assert cfg.source == "rtsp://admin:56789-abc@192.168.1.60:554/stream1"
