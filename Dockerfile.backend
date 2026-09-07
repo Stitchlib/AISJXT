@@ -1,5 +1,7 @@
 # 多阶段构建 - 后端
-FROM python:3.11-slim as backend-builder
+# 3.13 与 edge/requirements.lock.txt 的 requires-python>=3.12（numpy 2.5 等）对齐；
+# 运行时阶段 COPY 的 site-packages 路径也依赖此版本（python3.13）。
+FROM python:3.13-slim AS backend-builder
 
 WORKDIR /app
 
@@ -28,7 +30,7 @@ COPY edge/main.py .
 COPY edge/config ./config
 
 # 多阶段构建 - 运行时
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
