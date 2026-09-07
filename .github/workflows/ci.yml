@@ -27,7 +27,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          # 与 requirements.lock.txt 生成环境（3.13）及本地 venv 对齐：
+          # numpy 2.5 等锁定版本 requires-python >=3.12，3.11 无法安装（v2.0.0 CI 实证）。
+          python-version: '3.13'
       - name: Cache pip
         uses: actions/cache@v4
         with:

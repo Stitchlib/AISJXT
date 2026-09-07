@@ -36,7 +36,7 @@ WORKDIR /app
 RUN groupadd -r aibc && useradd -r -g aibc aibc
 
 # 从 builder 阶段复制已安装的依赖
-COPY --from=backend-builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=backend-builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=backend-builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 # 复制应用代码
