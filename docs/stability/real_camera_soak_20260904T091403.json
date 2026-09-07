@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-09-04T01:14:03.409533+00:00",
+  "config": {
+    "duration_s": 600,
+    "cameras": [
+      "cam_net_192_168_1_4",
+      "cam_001"
+    ],
+    "sample_interval_s": 60,
+    "server": "uvicorn :8018 (生产配置 data/inspection.db)"
+  },
+  "results": {
+    "server_alive": true,
+    "samples": 10,
+    "http_all_ok": true,
+    "total_processed_final": 744,
+    "count_monotonic_growing": true,
+    "rss_min_mb": 3.8,
+    "rss_max_mb": 3.8,
+    "rss_growth_pct": 0.0,
+    "db_final_mb": 4.34
+  },
+  "samples": [
+    {
+      "elapsed_s": 60.2,
+      "http_ok": true,
+      "total_processed": 57,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 2.02,
+      "p95_ms": 350.1
+    },
+    {
+      "elapsed_s": 120.3,
+      "http_ok": true,
+      "total_processed": 118,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 3.97,
+      "p95_ms": 299.2
+    },
+    {
+      "elapsed_s": 180.3,
+      "http_ok": true,
+      "total_processed": 206,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.13,
+      "p95_ms": 311.8
+    },
+    {
+      "elapsed_s": 240.3,
+      "http_ok": true,
+      "total_processed": 290,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.19,
+      "p95_ms": 330.3
+    },
+    {
+      "elapsed_s": 300.3,
+      "http_ok": true,
+      "total_processed": 365,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.19,
+      "p95_ms": 592.0
+    },
+    {
+      "elapsed_s": 360.3,
+      "http_ok": true,
+      "total_processed": 441,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.23,
+      "p95_ms": 733.0
+    },
+    {
+      "elapsed_s": 420.3,
+      "http_ok": true,
+      "total_processed": 516,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.26,
+      "p95_ms": 937.5
+    },
+    {
+      "elapsed_s": 480.3,
+      "http_ok": true,
+      "total_processed": 590,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.26,
+      "p95_ms": 319.7
+    },
+    {
+      "elapsed_s": 540.3,
+      "http_ok": true,
+      "total_processed": 666,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.3,
+      "p95_ms": 858.1
+    },
+    {
+      "elapsed_s": 600.4,
+      "http_ok": true,
+      "total_processed": 744,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 3.8,
+      "db_mb": 4.34,
+      "p95_ms": 313.3
+    }
+  ],
+  "pass": true
+}

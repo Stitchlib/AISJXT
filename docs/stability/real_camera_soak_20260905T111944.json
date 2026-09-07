@@ -1,0 +1,144 @@
+{
+  "partial": false,
+  "generated_at": "2026-09-05T03:25:32.831859+00:00",
+  "config": {
+    "duration_s": 90,
+    "cameras": [
+      "cam_001"
+    ],
+    "sample_interval_s": 30,
+    "server": "uvicorn :8040 (生产配置 data/inspection.db)"
+  },
+  "samples": [
+    {
+      "elapsed_s": 30.1,
+      "http_ok": true,
+      "total_processed": 18,
+      "running_cameras": [
+        "cam_001"
+      ],
+      "rss_mb": 481.2,
+      "db_mb": 45.27,
+      "p95_ms": 431.0
+    }
+  ],
+  "guard": {
+    "probes": 3,
+    "last": {
+      "http_ok": true,
+      "total_processed": 18,
+      "running_cameras": [
+        "cam_001"
+      ],
+      "rss_mb": 478.0,
+      "p95_ms": 431.0
+    },
+    "last_count": 18,
+    "baseline_rss_mb": 476.5,
+    "stall_probes": 3,
+    "consecutive_failures": 0,
+    "aborted": true,
+    "abort_reason": "detection_stalled_too_long",
+    "aborted_at": "2026-09-05T03:25:26.257461+00:00",
+    "warnings": [
+      {
+        "kind": "detection_stalled",
+        "at": "2026-09-05T03:25:05.847416+00:00",
+        "count": 6,
+        "stall_probes": 1
+      },
+      {
+        "kind": "detection_stalled",
+        "at": "2026-09-05T03:25:16.040959+00:00",
+        "count": 12,
+        "stall_probes": 2
+      },
+      {
+        "kind": "detection_stalled",
+        "at": "2026-09-05T03:25:26.257370+00:00",
+        "count": 18,
+        "stall_probes": 3
+      }
+    ],
+    "updated_at": "2026-09-05T03:25:32.828105+00:00"
+  },
+  "results": {
+    "generated_at": "2026-09-05T03:25:32.828145+00:00",
+    "config": {
+      "duration_s": 90,
+      "cameras": [
+        "cam_001"
+      ],
+      "sample_interval_s": 30,
+      "server": "uvicorn :8040 (生产配置 data/inspection.db)"
+    },
+    "results": {
+      "server_alive": true,
+      "samples": 1,
+      "http_all_ok": true,
+      "total_processed_final": 18,
+      "count_monotonic_growing": false,
+      "rss_min_mb": 481.2,
+      "rss_max_mb": 481.2,
+      "rss_growth_pct": 0.0,
+      "db_final_mb": 45.27,
+      "expected_duration_s": 90,
+      "actual_duration_s": 37.2
+    },
+    "guard": {
+      "probes": 3,
+      "last": {
+        "http_ok": true,
+        "total_processed": 18,
+        "running_cameras": [
+          "cam_001"
+        ],
+        "rss_mb": 478.0,
+        "p95_ms": 431.0
+      },
+      "last_count": 18,
+      "baseline_rss_mb": 476.5,
+      "stall_probes": 3,
+      "consecutive_failures": 0,
+      "aborted": true,
+      "abort_reason": "detection_stalled_too_long",
+      "aborted_at": "2026-09-05T03:25:26.257461+00:00",
+      "warnings": [
+        {
+          "kind": "detection_stalled",
+          "at": "2026-09-05T03:25:05.847416+00:00",
+          "count": 6,
+          "stall_probes": 1
+        },
+        {
+          "kind": "detection_stalled",
+          "at": "2026-09-05T03:25:16.040959+00:00",
+          "count": 12,
+          "stall_probes": 2
+        },
+        {
+          "kind": "detection_stalled",
+          "at": "2026-09-05T03:25:26.257370+00:00",
+          "count": 18,
+          "stall_probes": 3
+        }
+      ],
+      "updated_at": "2026-09-05T03:25:32.828105+00:00"
+    },
+    "samples": [
+      {
+        "elapsed_s": 30.1,
+        "http_ok": true,
+        "total_processed": 18,
+        "running_cameras": [
+          "cam_001"
+        ],
+        "rss_mb": 481.2,
+        "db_mb": 45.27,
+        "p95_ms": 431.0
+      }
+    ],
+    "pass": false
+  },
+  "pass": false
+}

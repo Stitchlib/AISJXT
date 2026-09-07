@@ -1,0 +1,93 @@
+{
+  "generated_at": "2026-09-04T02:23:35.423466+00:00",
+  "config": {
+    "duration_s": 1800.0,
+    "n_ws": 10,
+    "n_feeders": 4,
+    "assert_interval_s": 300.0,
+    "detector_mode": "simulation"
+  },
+  "memory": {
+    "available": true,
+    "sampled": 8,
+    "first_rss_mb": 69.4,
+    "max_rss_mb": 118.0,
+    "growth_pct": 12.09,
+    "ok": true,
+    "steady_early_rss_mb": 89.2,
+    "steady_late_rss_mb": 99.9,
+    "rss_curve_mb": [
+      69.4,
+      108.9,
+      113.9,
+      118.0,
+      87.3,
+      87.9,
+      113.2,
+      86.6
+    ]
+  },
+  "disk": {
+    "available": true,
+    "final_db_mb": 24.2
+  },
+  "throughput": {
+    "feeder_written": 94575,
+    "feeder_errors": 0,
+    "ws_messages_total": 54510,
+    "ws_frames_total": 54500,
+    "ws_errors_total": 0,
+    "db_total_rows": 100025
+  },
+  "final_capacity": {
+    "page_query_ms": 2.24,
+    "report_ms": 0.87,
+    "page_ok": true,
+    "report_ok": true
+  },
+  "rounds": [
+    {
+      "elapsed_s": 10.0,
+      "page_query_ms": 1.37,
+      "report_ms": 0.21,
+      "page_ok": true,
+      "report_ok": true
+    },
+    {
+      "elapsed_s": 310.1,
+      "page_query_ms": 1.33,
+      "report_ms": 0.13,
+      "page_ok": true,
+      "report_ok": true
+    },
+    {
+      "elapsed_s": 610.1,
+      "page_query_ms": 1.44,
+      "report_ms": 0.17,
+      "page_ok": true,
+      "report_ok": true
+    },
+    {
+      "elapsed_s": 910.3,
+      "page_query_ms": 1.59,
+      "report_ms": 0.17,
+      "page_ok": true,
+      "report_ok": true
+    },
+    {
+      "elapsed_s": 1210.4,
+      "page_query_ms": 1.49,
+      "report_ms": 0.27,
+      "page_ok": true,
+      "report_ok": true
+    },
+    {
+      "elapsed_s": 1510.5,
+      "page_query_ms": 1.61,
+      "report_ms": 0.18,
+      "page_ok": true,
+      "report_ok": true
+    }
+  ],
+  "pass": true
+}

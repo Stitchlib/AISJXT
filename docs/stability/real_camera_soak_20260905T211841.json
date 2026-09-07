@@ -1,0 +1,100 @@
+{
+  "partial": false,
+  "generated_at": "2026-09-05T13:22:07.490013+00:00",
+  "config": {
+    "duration_s": 86400,
+    "cameras": [
+      "cam_net_192_168_1_4",
+      "cam_001"
+    ],
+    "sample_interval_s": 300,
+    "server": "uvicorn :8018 (生产配置 data/inspection.db)"
+  },
+  "samples": [],
+  "guard": {
+    "run_id": "20260905T211957-pid13012",
+    "pid": 13012,
+    "probes": 3,
+    "last": {
+      "http_ok": true,
+      "http_code": 200,
+      "http_ms": 889.6,
+      "error": null,
+      "total_processed": 106,
+      "running_cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "rss_mb": 546.5,
+      "p95_ms": 327.8
+    },
+    "last_count": 106,
+    "baseline_rss_mb": 485.5,
+    "stall_probes": 0,
+    "consecutive_failures": 0,
+    "aborted": true,
+    "abort_reason": "server_process_exited",
+    "aborted_at": "2026-09-05T13:21:59.352764+00:00",
+    "busy_failures": 0,
+    "max_probe_gap_s": 31.1,
+    "warnings": [],
+    "updated_at": "2026-09-05T13:22:07.489722+00:00"
+  },
+  "results": {
+    "generated_at": "2026-09-05T13:22:07.489766+00:00",
+    "config": {
+      "duration_s": 86400,
+      "cameras": [
+        "cam_net_192_168_1_4",
+        "cam_001"
+      ],
+      "sample_interval_s": 300,
+      "server": "uvicorn :8018 (生产配置 data/inspection.db)"
+    },
+    "results": {
+      "server_alive": false,
+      "samples": 0,
+      "http_all_ok": true,
+      "total_processed_final": 0,
+      "count_monotonic_growing": false,
+      "rss_min_mb": null,
+      "rss_max_mb": null,
+      "rss_growth_pct": null,
+      "db_final_mb": null,
+      "expected_duration_s": 86400,
+      "actual_duration_s": 130.1
+    },
+    "guard": {
+      "run_id": "20260905T211957-pid13012",
+      "pid": 13012,
+      "probes": 3,
+      "last": {
+        "http_ok": true,
+        "http_code": 200,
+        "http_ms": 889.6,
+        "error": null,
+        "total_processed": 106,
+        "running_cameras": [
+          "cam_net_192_168_1_4",
+          "cam_001"
+        ],
+        "rss_mb": 546.5,
+        "p95_ms": 327.8
+      },
+      "last_count": 106,
+      "baseline_rss_mb": 485.5,
+      "stall_probes": 0,
+      "consecutive_failures": 0,
+      "aborted": true,
+      "abort_reason": "server_process_exited",
+      "aborted_at": "2026-09-05T13:21:59.352764+00:00",
+      "busy_failures": 0,
+      "max_probe_gap_s": 31.1,
+      "warnings": [],
+      "updated_at": "2026-09-05T13:22:07.489722+00:00"
+    },
+    "samples": [],
+    "pass": false
+  },
+  "pass": false
+}

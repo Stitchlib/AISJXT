@@ -1,0 +1,19 @@
+{
+  "partial": false,
+  "generated_at": "2026-09-05T13:05:19.502488+00:00",
+  "config": {
+    "duration_s": 86400,
+    "cameras": [
+      "cam_net_192_168_1_4",
+      "cam_001"
+    ],
+    "sample_interval_s": 300,
+    "server": "uvicorn :8018 (生产配置 data/inspection.db)"
+  },
+  "samples": [],
+  "guard": {},
+  "results": {
+    "pass": false
+  },
+  "pass": false
+}

@@ -1,258 +1,176 @@
-# 网络摄像头管理功能实现总结
+# 网络摄像头管理功能
 
-## ✅ 已完成功能
+> 本文件是网络摄像头相关功能的**唯一权威文档**。原先散落的
+> `QUICK_START_NETWORK_CAMERA.md` 与 `START_NETWORK_CAMERA.md` 已合并至此，
+> 仅保留指向本文件的简短入口，避免信息重复与端口/脚本引用失真。
 
-### 1. 后端实现
+AI 视觉质检系统支持接入真实 RTSP/IP 网络摄像头，与原有的仿真摄像头并存。
+后端通过轻量级端口探测发现同网段设备，也可手动添加；前端提供「网络摄像头管理」页面，
+支持一键扫描、添加、测试连接与状态监控。
 
-#### 核心组件
-- **NetworkCameraScanner** (`edge/src/network_camera_scanner.py`)
-  - 支持扫描 IP 范围内的 RTSP/IP 摄像头
-  - 自动检测常见端口：554, 8554, 8080, 80
-  - 支持多种品牌摄像头 URL 格式
-  - 实时测试 RTSP 流可用性
+---
 
-#### API 端点 (`edge/src/api_server.py`)
-```
-POST   /api/v1/cameras/network/scan         # 扫描网络摄像头
-GET    /api/v1/cameras/network/scan-results # 获取扫描结果
-POST   /api/v1/cameras/network/add          # 添加摄像头到配置
-POST   /api/v1/cameras/network/test         # 测试摄像头连接
-```
+## 1. 后端实现
 
-#### 配置管理
-- **ConfigManager.add_camera()** (`edge/src/config_manager.py`)
-  - 动态添加摄像头配置
-  - 自动保存到 YAML 配置文件
-  - 防止 ID 重复
+### 核心组件
+- **`edge/src/camera_manager.py`** — `CameraManager`
+  - `scan_network(subnet, ports=...)`：扫描 IP 范围内的 RTSP/IP 摄像头（探测常见端口 80/554/8000/8554）。
+  - `discover_and_add(subnet, username, password, set_active)`：扫描网段并自动注册可用设备。
+- **`edge/src/routers/cameras.py`** — REST 端点（前缀 `/api/v1/cameras`）。
+- **`edge/src/config_manager.py`** — 摄像头配置持久化到 `edge/config/config.json`。
 
-- **CameraManager.get_camera_info()** (`edge/src/camera_manager.py`)
-  - 获取所有摄像头信息
-  - 返回在线/离线状态
-  - 包含分辨率、帧率等参数
+> 注：历史文档中提到的 `edge/src/api_server.py`、`edge/src/network_camera_scanner.py`
+> 等文件名与当前代码结构不符，实际实现见上述文件，请勿照旧文档路径查找。
 
-### 2. 前端实现
+### API 端点（真实可用）
 
-#### 路由配置 (`frontend/src/router/index.js`)
-```javascript
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| GET | `/api/v1/cameras` | 获取摄像头列表（含在线/离线状态） | ✅ |
+| GET | `/api/v1/cameras/{id}` | 获取单个摄像头 | ✅ |
+| GET | `/api/v1/cameras/network/scan?subnet=192.168.1` | 扫描网段（**GET + 查询参数 `subnet`**，非 POST body） | ✅ |
+| POST | `/api/v1/cameras` | 添加摄像头（body 见下） | ✅ |
+| POST | `/api/v1/cameras/test` | 测试来源是否可连接并取到帧 | ✅ |
+| POST | `/api/v1/cameras/discover` | 扫描网段并自动注册 | ✅ |
+| PUT | `/api/v1/cameras/{id}` | 更新摄像头（含来源/凭据/类型归一化） | ✅ |
+| PUT | `/api/v1/cameras/{id}/active` | 设为当前激活摄像头 | ✅ |
+| DELETE | `/api/v1/cameras/{id}` | 删除摄像头 | ✅ |
+
+> ⚠️ 旧的 `POST /cameras/network/scan`、`GET /cameras/network/scan-results`、
+> `POST /cameras/network/add`、`POST /cameras/network/test` 端点**不存在**，
+> 请勿再调用；扫描结果直接由 `GET /cameras/network/scan` 返回。
+
+### 添加摄像头请求体（POST /api/v1/cameras）
+
+```json
 {
-  path: '/network-cameras',
-  name: 'NetworkCameraManager',
-  component: NetworkCameraManager,
-  meta: { title: '网络摄像头管理' }
+  "id": "camera_003",
+  "name": "门口摄像头",
+  "source": "rtsp://192.168.1.100:554/stream1",
+  "type": "rtsp",
+  "resolution": {"width": 1920, "height": 1080},
+  "fps": 30
 }
 ```
 
-#### 主界面组件 (`frontend/src/views/NetworkCameraManager.vue`)
-功能特性：
-- ✅ 一键扫描网络摄像头
-- ✅ 显示扫描结果（IP、端口、RTSP 地址）
-- ✅ 添加摄像头到系统
-- ✅ 测试摄像头连接
-- ✅ 移除摄像头
-- ✅ 实时状态监控
+- `type` 省略时按 `source` 自动推断（`rtsp://` → `rtsp`，数字 → `usb`，`http://` → `http`）。
+- 若提供 `username` / `password` 且为 `rtsp`/`http` 源，凭据会自动注入 `source`，
+  确保取流可用（如 `rtsp://user:pass@ip:port/stream`）。
 
-#### 设备管理集成 (`frontend/src/views/DeviceManagement.vue`)
-- 新增"网络摄像头"按钮，跳转到专用管理页面
-- 支持从设备列表快速访问
+---
 
-#### API 封装 (`frontend/src/api/index.js`)
-```javascript
-export const networkCameraApi = {
-  scanNetworkCameras(),    // 扫描
-  getScanResults(),        // 获取结果
-  addNetworkCamera(),      // 添加
-  testNetworkCamera()      // 测试
-}
-```
+## 2. 前端实现
 
-### 3. 支持的摄像头品牌
+- **路由**：`frontend/src/router/index.js` 中 `/network-cameras` → `NetworkCameraManager`。
+- **主界面**：`frontend/src/views/NetworkCameraManager.vue`
+  - 一键扫描、查看结果（IP / 端口 / RTSP 地址）、添加、测试连接、移除、状态监控。
+- **入口**：`frontend/src/views/DeviceManagement.vue` 的「网络摄像头」按钮跳转。
+- **API 封装**：`frontend/src/api/index.js` 的 `networkCameraApi`。
 
-| 品牌 | URL 格式示例 |
-|------|-------------|
-| 海康威视 | `rtsp://ip:554/h264/ch1/main/av_stream` |
-| 大华 | `rtsp://ip:554/cam/realmonitor?channel=1&subtype=0` |
-| Axis | `rtsp://ip:554/live/ch1` |
-| 华为 | `rtsp://ip:554/streaming/channels/101` |
-| 通用 | `rtsp://ip:554/stream1` |
+### 访问地址
+- **本地开发**：`http://localhost:3000/network-cameras`
+  （前端 dev server 端口见 `vite.config.js` 的 `server.port`，当前为 **3000**，
+  旧文档写的 3001 / 5173 均已失效）。
+- **Docker 一键部署**：`http://localhost/network-cameras`（前端由 Nginx 在 80 端口托管）。
 
-## 📍 访问路径
+---
 
-### Web 界面
-1. **独立页面**: http://localhost:3001/network-cameras
-2. **通过设备管理**: http://localhost:3001/devices → 点击"网络摄像头"按钮
+## 3. 支持的摄像头品牌（RTSP 格式）
 
-### API 端点
-基础 URL: `http://localhost:8000/api/v1`
+| 品牌 | 默认端口 | URL 格式示例 |
+|------|---------|--------------|
+| 海康威视 | 554 | `rtsp://ip:554/h264/ch1/main/av_stream` |
+| 大华 | 554 | `rtsp://ip:554/cam/realmonitor?channel=1&subtype=0` |
+| Axis | 554 | `rtsp://ip:554/live/ch1` |
+| 华为 | 554 | `rtsp://ip:554/streaming/channels/101` |
+| 通用 | 554 / 8554 | `rtsp://ip:554/stream1` |
 
-## 🔧 使用方法
+---
+
+## 4. 使用方法
 
 ### 方法一：Web 界面（推荐）
+1. 访问 `http://localhost:3000/network-cameras`（本地）或 `http://localhost/network-cameras`（Docker）。
+2. 点击「扫描网络摄像头」，输入 IP 范围（如 `192.168.1.1-192.168.1.255`）。
+3. 选择扫描结果中的设备，填写 ID / 名称后添加。
+4. 点击「测试连接」验证可用性（绿=在线，红=故障）。
 
-1. 访问 http://localhost:3001/network-cameras
-2. 点击"扫描网络摄像头"
-3. 输入 IP 范围（如：`192.168.1.1-192.168.1.255`）
-4. 点击"开始扫描"
-5. 在扫描结果中选择要添加的摄像头
-6. 填写摄像头信息（ID、名称等）
-7. 确认添加
-
-### 方法二：API 调用
+### 方法二：API 调用（curl）
 
 ```bash
-# 1. 扫描网络摄像头
-curl -X POST "http://localhost:8000/api/v1/cameras/network/scan" \
-  -H "Content-Type: application/json" \
-  -d '{"ip_range": "192.168.1.1-192.168.1.255", "timeout": 2.0}'
+# 1. 扫描网段（GET + subnet 查询参数）
+curl "http://localhost:8000/api/v1/cameras/network/scan?subnet=192.168.1"
 
-# 2. 获取扫描结果
-curl "http://localhost:8000/api/v1/cameras/network/scan-results"
-
-# 3. 添加摄像头
-curl -X POST "http://localhost:8000/api/v1/cameras/network/add" \
+# 2. 添加摄像头
+curl -X POST "http://localhost:8000/api/v1/cameras" \
   -H "Content-Type: application/json" \
   -d '{
     "id": "camera_003",
     "name": "门口摄像头",
-    "rtsp_url": "rtsp://192.168.1.100:554/stream1",
+    "source": "rtsp://192.168.1.100:554/stream1",
+    "type": "rtsp",
     "resolution": {"width": 1920, "height": 1080},
     "fps": 30
   }'
 
-# 4. 测试摄像头
-curl -X POST "http://localhost:8000/api/v1/cameras/network/test" \
+# 3. 测试连接（可带凭据）
+curl -X POST "http://localhost:8000/api/v1/cameras/test" \
   -H "Content-Type: application/json" \
-  -d '{"rtsp_url": "rtsp://192.168.1.100:554/stream1"}'
+  -d '{"source": "rtsp://admin:password@192.168.1.100:554/stream1"}'
+
+# 4. 自动发现并注册
+curl -X POST "http://localhost:8000/api/v1/cameras/discover" \
+  -H "Content-Type: application/json" \
+  -d '{"subnet": "192.168.1", "username": "admin", "password": "56789-abc", "set_active": true}'
 ```
 
-### 方法三：Python 脚本
+> 所有写操作（添加/测试/发现）需携带 `Authorization: Bearer <token>` 请求头。
 
-```python
-from edge.src.network_camera_scanner import NetworkCameraScanner
+---
 
-scanner = NetworkCameraScanner()
+## 5. 配置说明
 
-# 扫描网络
-results = scanner.scan_network("192.168.1.1-192.168.1.255", timeout=2.0)
+摄像头配置持久化于 **`edge/config/config.json`**（旧文档提到的 `config.yaml` 不存在）。
+相关字段：`cameras[]`、`active_camera_id`、`auto_discover`、`discover_username`、
+`discover_password`。新增/修改摄像头会即时写回该文件。
 
-# 查看结果
-for camera in results:
-    print(f"找到摄像头：{camera['ip']}")
-    print(f"RTSP 地址：{camera['rtsp_url']}")
-```
+---
 
-## 📁 相关文件
+## 6. 故障排查
 
-### 后端文件
-- `edge/src/network_camera_scanner.py` - 扫描器核心
-- `edge/src/api_server.py` - API 端点
-- `edge/src/config_manager.py` - 配置管理
-- `edge/src/camera_manager.py` - 摄像头管理
+### 问题 1：扫描不到摄像头
+- 确认摄像头已通电联网，且与运行后端的主机在**同一网段**；
+- 确认 IP 范围正确（本机网段可用 `ipconfig` / `ifconfig` 查看）；
+- 防火墙可能拦截扫描端口，可临时关闭测试；
+- 网络较差时增大超时（扫描超时在 `camera_manager.scan_network` 中设定）。
 
-### 前端文件
-- `frontend/src/views/NetworkCameraManager.vue` - 主界面
-- `frontend/src/views/DeviceManagement.vue` - 设备管理集成
-- `frontend/src/router/index.js` - 路由配置
-- `frontend/src/api/index.js` - API 封装
+### 问题 2：无法连接 RTSP 流
+- 用 **VLC 播放器**先验证 RTSP 地址是否可达；
+- 需要认证时，地址中带上账号密码：`rtsp://user:pass@ip:port/stream`；
+- 端口被防火墙阻止时调整网络策略。
 
-### 文档文件
-- `docs/网络摄像头自动添加指南.md` - 详细使用指南
-- `NETWORK_CAMERA_FEATURE.md` - 本文档
+### 问题 3：页面打不开
+- 本地开发确认前端已启动：`cd frontend && npm run dev`（监听 3000）；
+- 清除浏览器缓存后重试（Ctrl+F5 硬刷新）。
 
-## ⚙️ 配置说明
+---
 
-### 摄像头配置参数
+## 7. 性能与安全建议
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| id | string | - | 唯一标识（必填） |
-| name | string | - | 摄像头名称（必填） |
-| source | string | - | RTSP 地址（必填） |
-| resolution.width | int | 1920 | 宽度 |
-| resolution.height | int | 1080 | 高度 |
-| fps | int | 30 | 帧率 |
-| exposure | float | -4 | 曝光值 |
-| contrast | int | 50 | 对比度 |
-| brightness | int | 50 | 亮度 |
+- **扫描优化**：先小范围（如 `.1-.50`）确认可行再扩大；避开网络高峰；视网络质量调整超时。
+- **运行优化**：建议同时运行的摄像头不超过 8 个；优先子码流（720p）；25–30 FPS 足够多数场景。
+- **安全**：
+  1. 所有摄像头必须修改出厂默认密码；
+  2. RTSP 流应配置用户名/密码认证；
+  3. 摄像头建议置于独立 VLAN 网络隔离；
+  4. 及时升级摄像头固件。
 
-### 配置文件位置
-`edge/config/config.yaml`
+---
 
-## 🐛 故障排查
-
-### 问题 1：找不到"扫描网络摄像头"按钮
-**原因**：前端未正确加载或路由未配置  
-**解决**：
-1. 检查路由配置：`frontend/src/router/index.js`
-2. 确认 `NetworkCameraManager.vue` 文件存在
-3. 重启前端服务
-
-### 问题 2：扫描不到摄像头
-**可能原因**：
-- IP 范围错误
-- 摄像头未通电或未联网
-- 防火墙阻止
-
-**解决方法**：
-1. 确认 IP 范围正确（使用 `ipconfig` 查看本机网段）
-2. 检查摄像头电源和网络连接
-3. 临时关闭防火墙测试
-
-### 问题 3：无法连接 RTSP 流
-**可能原因**：
-- RTSP 地址格式错误
-- 需要认证但未提供用户名密码
-- 端口被防火墙阻止
-
-**解决方法**：
-1. 使用 VLC 播放器测试 RTSP 地址
-2. 添加认证信息：`rtsp://user:pass@ip:port/stream`
-3. 检查防火墙设置
-
-## 🚀 性能优化建议
-
-### 扫描优化
-1. **缩小 IP 范围**：只扫描实际使用的网段
-2. **调整超时时间**：根据网络质量调整（默认 2 秒）
-3. **避开网络高峰**：在空闲时段扫描
-
-### 运行优化
-1. **合理数量**：建议不超过 8 个网络摄像头
-2. **降低分辨率**：使用子码流（720p）代替主码流
-3. **优化帧率**：25-30 FPS 足够大多数场景
-
-## 🔒 安全建议
-
-1. **修改默认密码**：所有摄像头都应修改默认管理员密码
-2. **启用认证**：RTSP 流应配置用户名密码认证
-3. **网络隔离**：将摄像头放在独立的 VLAN 中
-4. **定期更新**：及时更新摄像头固件
-
-## 📊 API 完整列表
-
-| 端点 | 方法 | 说明 | 认证 |
-|------|------|------|------|
-| `/cameras/network/scan` | POST | 扫描网络摄像头 | ✅ |
-| `/cameras/network/scan-results` | GET | 获取扫描结果 | ✅ |
-| `/cameras/network/add` | POST | 添加摄像头 | ✅ |
-| `/cameras/network/test` | POST | 测试摄像头 | ✅ |
-| `/cameras` | GET | 获取摄像头列表 | ✅ |
-| `/camera/{id}/status` | GET | 获取摄像头状态 | ✅ |
-
-## 📝 测试脚本
-
-运行测试：
-```bash
-python test_network_camera_scanner.py
-```
-
-## 🎯 下一步计划
+## 8. 后续计划
 
 - [ ] 支持 ONVIF 协议自动发现
-- [ ] 支持批量添加和导入
+- [ ] 支持批量添加 / 导入
 - [ ] 增加摄像头预览功能
-- [ ] 支持更多品牌和 URL 格式
-- [ ] 添加摄像头分组管理
-
-## 📞 技术支持
-
-如有问题，请参考完整文档：`docs/网络摄像头自动添加指南.md`
+- [ ] 支持更多品牌与 URL 格式
+- [ ] 摄像头分组管理

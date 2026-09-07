@@ -39,7 +39,7 @@
 ### 方式二：本地运行
 
 **前提条件**：
-- Python 3.9+
+- Python 3.11+
 - Node.js 18+
 
 #### 后端启动
@@ -70,7 +70,7 @@ npm install
 npm run dev
 ```
 
-前端将在 `http://localhost:5173` 启动
+前端将在 `http://localhost:3000` 启动（端口见 `vite.config.js` 的 `server.port`）
 
 ---
 
@@ -78,13 +78,21 @@ npm run dev
 
 ### 邮件通知配置
 
-```bash
-# 1. 复制配置示例
-cp edge/config/email_config.yaml.example edge/config/email_config.yaml
+邮件告警在 **`edge/config/config.json`** 中通过 `smtp_*` 字段配置（无需独立的 yaml 文件）：
 
-# 2. 编辑配置文件
-# 填入你的邮箱信息
+```json
+{
+  "smtp_enabled": true,
+  "smtp_host": "smtp.qq.com",
+  "smtp_port": 465,
+  "smtp_mode": "ssl",
+  "smtp_user": "your@qq.com",
+  "smtp_pass": "授权码",
+  "smtp_from": "your@qq.com"
+}
 ```
+
+修改后重启后端即可生效；`smtp_mode` 支持 `ssl` / `starttls` / `plain`。
 
 **常见邮箱 SMTP 配置**：
 
@@ -159,21 +167,23 @@ cp -r edge/data ./backup/data_$(date +%Y%m%d)
 
 ## 🎯 功能验证
 
-### 运行完整测试
+### 后端测试（pytest）
 
 ```bash
-# 验证所有新增功能
-python validate-all-features.py
+# 运行后端全套测试（需安装 pytest）
+pip install pytest
+pytest tests/ -q
 ```
 
-### 测试新功能
+> 性能验收（1M 行 <500ms）位于 `tests/performance/test_perf_1m.py`，
+> 默认不纳入常规 `tests/` 收集，可单独运行：
+> `pytest tests/performance/test_perf_1m.py -q`
+
+### Windows 快速验证
 
 ```bash
-# Windows
+# 运行新功能冒烟脚本（若存在）
 test-new-features.bat
-
-# 或直接运行
-python tests/test_new_features.py
 ```
 
 ---
@@ -262,7 +272,7 @@ python -c "from src.email_notifier import get_email_notifier; n=get_email_notifi
 
 - **API 文档**: http://localhost:8000/api/v1/docs
 - **部署指南**: DEPLOYMENT.md
-- **功能总结**: docs/功能增强完成总结.md
+- **网络摄像头**: NETWORK_CAMERA_FEATURE.md
 
 ---
 

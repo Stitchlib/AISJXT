@@ -78,15 +78,20 @@ start-dev.bat
 |------|------|
 | 健康检查 | `GET /health`、`GET /system-health` |
 | 鉴权 | `POST /auth/login`、`GET /auth/me` |
-| 摄像头 | `GET/POST/PUT/DELETE /cameras`、`GET /cameras/network/scan` |
+| 摄像头 | `GET/POST/PUT/DELETE /cameras`、`GET /cameras/network/scan`、`PUT /cameras/{id}` 支持 `roi`（归一化检测区域，G6） |
 | 配置 | `GET/PUT /config` |
 | 检测 | `GET /detection-results`、`GET /detection-results/statistics`、`GET /detection-results/export` |
-| 检测控制 | `POST /inspection/start`、`POST /inspection/stop`、`GET /inspection/status` |
-| 模型 | `GET/POST /model-versions/upload`、`POST /model-versions/{id}/activate`、`DELETE /model-versions/{id}` |
-| 报表 | `GET /reports/summary`、`GET /reports/export` |
-| 告警 | `GET/POST/PUT/DELETE /alerts/rules`、`GET /alerts/events`、`POST /alerts/events/{id}/acknowledge` |
-| 用户 | `GET/POST/PUT/DELETE /users`（仅 admin） |
+| 检测控制 | `POST /inspection/start`（`camera_id` 支持单个/逗号列表/`all`，多摄并发，G5）、`POST /inspection/stop`（可单停一摄）、`GET /inspection/status`（含 `running_cameras` 分摄计数） |
+| 模型 | `GET/POST /model-versions/upload`、`POST /model-versions/{id}/activate`、`DELETE /model-versions/{id}`、`GET /model-versions/export-samples`（operator+；把已判定 confirmed/false_positive 的缺陷帧 + 标注导出为 YOLO 目录 zip，受 `sample_export_limit` 配额保护） |
+| 报表 | `GET /reports/summary`、`GET /reports/export`、`GET /reports/batch/{batch_id}`（按批次聚合） |
+| 告警 | `GET/POST/PUT/DELETE /alerts/rules`、`GET /alerts/events`、`POST /alerts/events/{id}/acknowledge`、`POST /alerts/events/{id}/verdict`（人工判定：确认/误报/漏报）、`POST /alerts/rules/{id}/test`（Webhook 连通性测试） |
+| 用户 | `GET/POST/PUT/DELETE /users`（仅 admin）、`PUT /users/{id}/password`（改密码：本人需验旧口令） |
+| 审计 | `GET /audit`（仅 admin，管理操作流水） |
+| 令牌 | `POST /auth/refresh`（滑动过期刷新，免中途登出） |
+| 视频流 | `GET /cameras/stream-ticket`（换取一次性短时效 ticket，MJPEG 用 `?ticket=` 取流，避免 JWT 落日志） |
 | 实时 | `WS /ws`（start/stop 指令 + detection_result / alert / control 推送） |
+| 批次/工单 | `GET/POST /batches`、`GET /batches/{id}`、`POST /batches/{id}/end`（operator+；结束批次同步解绑检测引擎当前批次）；`POST /inspection/start?batch_id=` 绑定批次后本次检测记录自动带 `batch_id` |
+| 系统运维 | `POST /system/backup`、`GET /system/backups`（仅 admin；SQLite 在线备份 + 保留最近 N 份，N 默认 7 可配） |
 
 交互式文档：`http://localhost:8000/docs`（Swagger）。除登录外均需 `Authorization: Bearer <token>`。
 
@@ -100,6 +105,9 @@ start-dev.bat
 
 覆盖：认证与 401 守卫、摄像头 CRUD、配置读写、WebSocket→检测→持久化→查询全链路、
 告警规则触发与确认、报表聚合与导出、用户 RBAC、数据库批量写入性能（WAL + synchronous=NORMAL 优化）。
+第二期（第二批）新增覆盖：批次/工单创建与绑定（`tests/test_stage2b.py`）、告警人工判定与误报率统计、
+多渠道 Webhook 通知（generic/钉钉/飞书/企业微信，含 mock 单测）、schema 版本化迁移幂等、
+SQLite 在线备份与超额清理（`prune_backups` 保留最近 N 份 + 审计）。
 
 ---
 
@@ -114,6 +122,43 @@ docker compose up -d --build
 
 ---
 
+## 安全与运维
+
+系统按"可上产线"目标加固，关键安全姿态如下（均有对应测试覆盖）：
+
+- **密钥与口令治理（H5）**：JWT 签名密钥 `secret_key`、管理员初始口令均支持并**强烈建议**通过环境变量覆盖
+ （`AIQC_SECRET_KEY` / `AIQC_ADMIN_PASSWORD`）。未覆盖时启动日志明确告警，不静默放行。
+- **配置接口脱敏与越权防护（H1/M5）**：`GET /config` 仅返回白名单字段（阈值、fps、缺陷类型等），
+  `secret_key` 与明文 SMTP 口令永不外泄；`PUT /config` 仅 admin 可调，viewer 返回 403。
+- **WebSocket 鉴权（H2）**：`/ws` 连接须携带 `?token=` 或首帧 `{"action":"auth","token":...}`；
+  未授权立即关闭（码 4401）；非管理员发送 start/stop 被拒（码 4403）。
+- **CORS 收敛（M8）**：`allow_origins` 由 `AIQC_ALLOWED_ORIGINS`（逗号分隔）注入，默认空（仅同源）；
+  Nginx 反代场景下无需跨域。
+- **视频流鉴权（M7）**：MJPEG 流不再使用 `?token=<JWT>`（避免令牌进入访问日志/浏览器历史），
+  改为先换取一次性 60s 短时效 `stream-ticket`，URL 用 `?ticket=`。
+- **登录限流（M6）**：同账号连续 5 次失败锁定 10 分钟（内存计数，单实例足够）；用户可改自身口令（需验旧口令）、
+  admin 可重置他人口令；禁止删除自己与最后一个管理员。
+- **审计日志（L3）**：登录、配置变更、用户增删、模型激活等管理操作记入 `audit_logs`，
+  admin 可在「用户管理 → 审计日志」查看流水（who/what/when/ip）。
+- **配置健壮性（M12）**：`config.json` 解析失败时自动备份为 `config.json.corrupt-{ts}` 并标记降级，
+  `/system-health` 暴露 `config_degraded` 状态，绝不静默回退到空配置导致配置清零。
+- **监控指标（L9）**：`/system-health` 输出推理延迟 P50/P95、帧丢帧率、WS 在线连接数、DB 大小与写入 QPS、
+  检测器模式与配置状态，供仪表盘与压测观察。
+
+### 配置（环境变量，生产必设）
+
+| 变量 | 说明 |
+|------|------|
+| `AIQC_SECRET_KEY` | JWT 签名密钥（**必设**，否则可被伪造 admin 令牌） |
+| `AIQC_ADMIN_PASSWORD` | 覆盖默认管理员口令 `admin123` |
+| `AIQC_ALLOWED_ORIGINS` | CORS 可信来源，逗号分隔；留空=仅同源 |
+| `AIQC_DB_PATH` / `AIQC_MODEL_PATH` | 容器内数据 / 权重路径（覆盖配置文件中的宿主绝对路径） |
+| `AIQC_DATA_RETENTION_DAYS` / `AIQC_INSPECTION_INTERVAL_MS` / `AIQC_MAX_UPLOAD_MB` / `AIQC_TOKEN_EXPIRE_MINUTES` | 数据保留天数 / 检测节拍(ms) / 模型上传上限(MB) / 令牌时效(分) |
+| `AIQC_BACKUP_DIR` / `AIQC_BACKUP_RETENTION` | SQLite 在线备份目录（默认 `data/backups`）/ 备份保留份数（默认 7） |
+| `AIQC_IMAGE_RETENTION_DAYS` / `AIQC_IMAGE_QUOTA_GB` | 缺陷图片留存天数（默认 7）/ 图片配额 GB（默认 2，超配额触发清理） |
+
+---
+
 ## 已知边界 / 待补强
 
 1. **真实检测模型**：检测流水线已接通真实 YOLOv8 推理（`detector.YoloDetector`，`ultralytics` 驱动）。
@@ -125,6 +170,18 @@ docker compose up -d --build
 3. **邮件通知**：`notifier.py` 已实现并**经测试验证**（自包含 SMTP 服务做真实收发）。支持 `smtp_mode=ssl|starttls|plain`，
    默认关闭，需在 `/config` 开启 SMTP 并填主机/端口/账号；告警规则可绑定 `notify_email`，
    命中后落库事件并发送告警邮件（标记 `notified`）。详见 `tests/test_email_alert.py`。
+4. **多渠道 Webhook 通知（第二期 G3）**：告警规则支持 `webhook_url` + `webhook_type`（generic/dingtalk/feishu/wecom），
+   命中阈值后经 `asyncio.to_thread` 异步 POST，失败仅记日志并重试 1 次（不阻塞主流程）；可通过 `POST /alerts/rules/{id}/test` 发一次连通性测试。
+   纯标准库 `urllib` 实现，无额外依赖。
+5. **缺陷图片留存（第二期 G1）**：命中缺陷时落盘原图/裁剪图至 `data/defects/`，受 `image_retention_days` 与 `image_quota_gb`（默认 7 天 / 2GB）配额治理，
+   启动期与每 6 小时周期性清理过期/超配额图片；`detection_results.image_path` 指向留存图，看板可按事件回看。
+6. **批次/工单追溯（第二期 G4）**：`POST /inspection/start?batch_id=` 可绑定生产批次，本次检测记录自动带 `batch_id`（兼容 NULL）；
+   `GET /reports/batch/{id}` 按批次聚合不良率/缺陷数/按类型分布，支持产线级质量追溯。
+7. **备份与迁移（第二期 G7）**：`POST /system/backup` 用 `sqlite3` backup API 做在线热备至 `data/backups/`，保留最近 N 份（默认 7，可配 `backup_retention`）；
+   schema 变更统一纳入版本化迁移注册表（幂等），`schema_version` 表记录当前版本，启动期自动补齐旧库列/索引且不破坏既有数据。
+8. **训练样本导出（第二期 1.3）**：模型迭代闭环收口——`GET /model-versions/export-samples` 把已人工判定（confirmed/false_positive）的缺陷帧 + 标注导出为 YOLO 目录结构（images/ + labels/ + classes.txt + data.yaml），直接可用于 `ultralytics train`；单次样本数受 `sample_export_limit`（默认 2000，可配）配额保护。
+9. **多摄像头并发检测（第二期 G5）**：引擎重构为任务字典（每摄一个检测任务），`start?camera_id=a,b` 或 `camera_id=all` 并发启动、可运行中追加；共享帧总线 + 共享检测器（推理加锁串行）；`status.running_cameras` 分摄计数；单摄连续异常自动摘除，不影响其他摄像头；单摄无参启动行为不变。
+10. **ROI 检测区域（第二期 G6）**：摄像头配置 `roi`（归一化矩形列表，`PUT /cameras/{id}`），检测前对 ROI 并集外画面涂黑掩膜 + 检出后按 bbox 中心二次过滤（区域外目标不计入结果），坐标保持原图像素（前端画框位置一致）；视频流叠加 ROI 边界；设备管理页支持拖拽画框编辑；不配置则全画面检测（行为不变）。
 4. **PWA / 双因子 / 日志上报**：早期文档提及但本版未实现，如需要可后续迭代。
 
 ---
