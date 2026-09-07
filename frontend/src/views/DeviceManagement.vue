@@ -4,8 +4,8 @@
       <h2>设备管理</h2>
       <div class="controls">
         <el-button type="primary" @click="scan" :loading="scanning">扫描网络摄像头</el-button>
-        <el-button type="warning" @click="openDiscover" :loading="discovering">发现并自动添加</el-button>
-        <el-button type="success" @click="openAdd">+ 添加设备</el-button>
+        <el-button v-if="canOperate" type="warning" @click="openDiscover" :loading="discovering">发现并自动添加</el-button>
+        <el-button v-if="canOperate" type="success" @click="openAdd">+ 添加设备</el-button>
       </div>
     </div>
 
@@ -57,15 +57,16 @@
           </template>
         </el-table-column>
         <el-table-column prop="resolution" label="分辨率" width="120" />
-        <el-table-column label="操作" width="290" fixed="right">
+        <el-table-column label="操作" width="340" fixed="right">
           <template #default="{ row }">
             <el-tag v-if="row.id === activeId" type="success" size="small" style="margin-right: 6px">当前</el-tag>
-            <el-button v-else type="primary" link size="small" @click="setActive(row)">设为当前</el-button>
+            <el-button v-else-if="canOperate" type="primary" link size="small" @click="setActive(row)">设为当前</el-button>
             <el-button type="success" link size="small" @click="openPreview(row)">预览</el-button>
+            <el-button v-if="canOperate" type="info" link size="small" @click="openEdit(row)">编辑</el-button>
             <el-button type="warning" link size="small" @click="openRoi(row)">
               ROI{{ row.roi && row.roi.length ? '(' + row.roi.length + ')' : '' }}
             </el-button>
-            <el-button type="danger" link size="small" @click="remove(row)">删除</el-button>
+            <el-button v-if="canAdmin" type="danger" link size="small" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -116,6 +117,37 @@
         <el-button @click="addDialog = false">取消</el-button>
         <el-button :loading="testing" @click="testAdd">测试连接</el-button>
         <el-button type="primary" :loading="saving" @click="add">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 第三期 1.1/1.2：编辑设备。来源/凭据仅 admin 可改；账号密码留空=不修改 -->
+    <el-dialog v-model="editDialog" :title="'编辑设备 — ' + (editForm.id || '')" width="460px">
+      <el-alert type="info" :closable="false" style="margin-bottom: 12px"
+        title="来源与账号/密码仅管理员可修改；账号、密码留空表示保持不变。" />
+      <el-form :model="editForm" label-width="90px">
+        <el-form-item label="名称"><el-input v-model="editForm.name" /></el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="editForm.type" style="width: 100%" :disabled="!canAdmin">
+            <el-option label="RTSP" value="rtsp" />
+            <el-option label="USB" value="usb" />
+            <el-option label="HTTP" value="http" />
+            <el-option label="仿真" value="simulation" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="来源">
+          <el-input v-model="editForm.source" :disabled="!canAdmin" placeholder="rtsp://... 或 0" />
+        </el-form-item>
+        <el-form-item label="账号">
+          <el-input v-model="editForm.username" :disabled="!canAdmin" placeholder="留空=不修改" />
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="editForm.password" type="password" :disabled="!canAdmin" placeholder="留空=不修改" show-password />
+        </el-form-item>
+        <el-form-item label="启用"><el-switch v-model="editForm.enabled" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialog = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
@@ -205,6 +237,54 @@ const activeId = ref('')
 const addDialog = ref(false)
 const form = reactive({ id: '', name: '', type: 'rtsp', source: '', enabled: true, username: '', password: '' })
 const testing = ref(false)
+
+// 角色能力（第三期 1.1，与后端权限矩阵一致）：
+// operator+ 可增改普通字段/设当前/发现；删除与来源/凭据修改仅 admin
+const canOperate = computed(() => ['admin', 'operator'].includes(store.user?.role || ''))
+const canAdmin = computed(() => store.user?.role === 'admin')
+
+// 编辑设备：来源默认显示掩码值；账号/密码留空=不修改；
+// 含 ":***@" 的掩码回传由后端视为"未修改"，绝不写穿真实凭据
+const editDialog = ref(false)
+const editForm = reactive({ id: '', name: '', type: 'rtsp', source: '', username: '', password: '', enabled: true })
+const editOriginal = reactive({ source: '' })
+
+function openEdit(row) {
+  editForm.id = row.id
+  editForm.name = row.name
+  editForm.type = row.type
+  editForm.source = row.source_masked || row.source || ''
+  editForm.username = ''
+  editForm.password = ''
+  editForm.enabled = row.enabled !== false
+  editOriginal.source = row.source_masked || row.source || ''
+  editDialog.value = true
+}
+
+async function saveEdit() {
+  if (!editForm.name) {
+    ElMessage.warning('请填写名称')
+    return
+  }
+  const payload = { name: editForm.name, enabled: editForm.enabled }
+  if (editForm.type) payload.type = editForm.type
+  const src = (editForm.source || '').trim()
+  // 仅当来源被真正改动（且不含掩码标记）才提交 → 后端按 admin 权限校验
+  if (src && src !== editOriginal.source && !src.includes(':***@')) payload.source = src
+  if (editForm.username.trim()) payload.username = editForm.username.trim()
+  if (editForm.password) payload.password = editForm.password
+  saving.value = true
+  try {
+    await cameraApi.update(editForm.id, payload)
+    ElMessage.success('已保存')
+    editDialog.value = false
+    await load()
+  } catch (e) {
+    ElMessage.error('保存失败：' + (e.response?.data?.detail || e.message))
+  } finally {
+    saving.value = false
+  }
+}
 
 const discoverDialog = ref(false)
 const dform = reactive({ subnet: '192.168.1', username: '', password: '' })
