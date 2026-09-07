@@ -1,6 +1,9 @@
 // WebSocket 客户端：指数退避重连 + 页面可见性立即重试 + 重连后状态对齐。
 // 默认使用同源地址，由 Vite dev proxy / nginx 将 /ws 转发到后端。
-// 鉴权：ws://<host>/ws?token=<jwt>（后端鉴权失败会直接关闭连接，code 4401）。
+// 鉴权（第三期 1.3/M3）：连接前先 POST /ws-ticket 换一次性票据（30s），
+// 以 ws://<host>/ws?ticket=<ticket> 握手——JWT 不再出现在 URL/access log。
+// 换票失败（离线/过期）时退化为"裸连接 + 首帧 auth"兜底，JWT 同样不进 URL。
+import client from '@/api/client'
 import { getToken, clearToken, clearUser } from '@/api/client'
 
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -12,11 +15,20 @@ export function getBackoffDelay(attempt) {
   return Math.min(30000, 1000 * 2 ** clamped)
 }
 
-function buildWsUrl() {
-  const token = getToken()
-  if (!token) return WS_BASE
+// 换取一次性 WS 票据；失败返回 null（调用方走首帧 auth 兜底）
+export async function acquireTicket() {
+  try {
+    const resp = await client.post('/ws-ticket', {}, { timeout: 5000 })
+    return (resp.data && resp.data.ticket) || null
+  } catch (_) {
+    return null
+  }
+}
+
+function buildWsUrl(ticket) {
+  if (!ticket) return WS_BASE
   const sep = WS_BASE.includes('?') ? '&' : '?'
-  return `${WS_BASE}${sep}token=${encodeURIComponent(token)}`
+  return `${WS_BASE}${sep}ticket=${encodeURIComponent(ticket)}`
 }
 
 export function createWebSocket(onMessage, onStatus, options = {}) {
@@ -32,11 +44,18 @@ export function createWebSocket(onMessage, onStatus, options = {}) {
     if (window.location.hash !== '#/login') window.location.hash = '#/login'
   }
 
-  function connect() {
-    ws = new WebSocket(buildWsUrl())
+  async function connect() {
+    // 每次连接（含重连）都重新换票：票据是一次性的，30s 后也会过期
+    const ticket = getToken() ? await acquireTicket() : null
+    if (closedByUser) return // 等待换票期间组件可能已卸载
+    ws = new WebSocket(buildWsUrl(ticket))
     ws.onopen = () => {
       attempt = 0 // 连接成功，重置退避计数
       onStatus && onStatus(true)
+      // 兜底路径：未能换票时以首帧 auth 完成鉴权（JWT 不落 URL）
+      if (!ticket && getToken()) {
+        ws.send(JSON.stringify({ action: 'auth', token: getToken() }))
+      }
       // 重连成功后主动对齐检测状态与未读告警
       if (typeof onReconnect === 'function') {
         try {

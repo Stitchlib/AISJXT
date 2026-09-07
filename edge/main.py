@@ -16,7 +16,7 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.audit import AuditLogger
@@ -46,6 +46,7 @@ from src.routers import (
     users,
     video,
 )
+from src.stream_tickets import WS_TICKET_TTL_SECONDS, consume_identity, issue as issue_ticket
 from src.websocket_manager import ConnectionManager
 
 logging.basicConfig(
@@ -290,18 +291,42 @@ def root():
     return {"service": "ai-visual-inspection", "version": "1.0.0", "docs": "/docs"}
 
 
+@app.post("/api/v1/ws-ticket")
+def ws_ticket(request: Request):
+    """签发 WS 握手一次性票据（第三期 1.3/M3）：30 秒有效、绑定当前用户身份。
+
+    前端先 POST 换票，再以 /ws?ticket=<ticket> 连接；JWT 不再出现在 WS URL 与 access log。
+    换票必须持 Bearer 令牌登录——WS 控制面要按角色鉴权，票据必须能绑定到用户身份。
+    """
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="换票需要登录（Bearer 令牌）")
+    user = request.app.state.auth.get_current_user(request)
+    ticket, ttl = issue_ticket(request, ttl=WS_TICKET_TTL_SECONDS, username=user.username)
+    return {"ticket": ticket, "ttl": ttl}
+
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
-    # H2：WebSocket 鉴权。支持两种握手方式：
-    #   1) 连接 URL 携带 ?token=<jwt>；
-    #   2) 未带 token 时，等待首帧 {"action":"auth","token":"<jwt>"}。
+    # H2：WebSocket 鉴权。支持三种握手方式（按优先级）：
+    #   1) 连接 URL 携带 ?ticket=<一次性票据>（第三期 1.3：POST /api/v1/ws-ticket 换取，
+    #      避免 JWT 进 access log；票据绑定用户身份，控制面仍按角色鉴权）；
+    #   2) 连接 URL 携带 ?token=<jwt>（兼容保留）；
+    #   3) 未带任何凭据时，等待首帧 {"action":"auth","token":"<jwt>"}（兜底，5 秒超时）。
     # 鉴权失败直接关闭连接（code 4401），避免未授权控制检测引擎或窃取数据。
     # 握手（accept）由 ConnectionManager.connect 统一完成，避免重复 accept。
     auth = app.state.auth
     await app.state.ws.connect(websocket)
+    user = None
+    ticket = websocket.query_params.get("ticket")
+    if ticket:
+        username = consume_identity(websocket, ticket)  # 注意：消费的是 websocket（同 app.state）
+        if username:
+            user = auth.get_user(username)
     token = websocket.query_params.get("token")
-    user = auth.get_user_from_token(token) if token else None
-    # 若握手未携带有效令牌，则等待首帧 {"action":"auth","token":...} 完成鉴权；
+    if user is None and token:
+        user = auth.get_user_from_token(token)
+    # 若握手未携带有效凭据，则等待首帧 {"action":"auth","token":...} 完成鉴权；
     # 用超时兜底，避免「无令牌且不发帧」的空连接永久阻塞（H2 安全收口）。
     if user is None:
         try:
@@ -329,10 +354,18 @@ async def ws_endpoint(websocket: WebSocket):
                 data = json.loads(msg)
                 action = data.get("action")
                 if action in ("start", "stop"):
-                    # 仅管理员可启停检测引擎（H2/M5 收口控制面）
-                    if user.role != UserRole.ADMIN:
+                    # 权限矩阵（第三期 1.1）：WS 控制面与 HTTP 一致 → operator+（原 admin-only 放宽）
+                    if user.role not in (UserRole.ADMIN, UserRole.OPERATOR):
+                        try:
+                            app.state.audit.record(
+                                actor=user.username, action="rbac_denied", target="/ws",
+                                detail=f"WS 启停被拒 role={user.role.value}",
+                                ip=websocket.client.host if websocket.client else "",
+                            )
+                        except Exception:  # pragma: no cover - 审计失败不改变响应
+                            pass
                         await websocket.send_json(
-                            {"type": "error", "code": 4403, "message": "权限不足：仅管理员可启停检测"}
+                            {"type": "error", "code": 4403, "message": "权限不足：需要操作员及以上权限"}
                         )
                         continue
                     if action == "start":
