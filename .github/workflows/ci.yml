@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# 诊断步需要 issues:write 开诊断 issue；默认 token 权限为只读（v2.0.0 实证 403）。
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   backend-lint:
     runs-on: ubuntu-latest
