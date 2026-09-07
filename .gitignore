@@ -66,3 +66,14 @@ Thumbs.db
 
 # ===== 推送用临时 SSH 密钥（私钥勿入库） =====
 .ssh_push/
+
+# ===== 根目录排障日志（本地运行产物，一律不入库） =====
+/*.log
+
+# ===== 测试运行期临时配置（conftest/用例生成） =====
+tests/_tmp_cfg/
+
+# ===== docs/stability：报告 JSON 入库，运行时产物不入库 =====
+docs/stability/*.log
+docs/stability/tmp*.tmp
+docs/stability/soak_status.json
