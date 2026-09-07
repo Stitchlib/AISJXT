@@ -11,13 +11,19 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # 数据库与配置持久化（模型权重按需挂载）
+      # 数据库、配置、模型权重的持久化（与代码 MODEL_DIR=/app/model 对齐，单数 model）
       - ./edge/data:/app/data
       - ./edge/config:/app/config
-      - ./edge/models:/app/models
+      - ./edge/model:/app/model
     environment:
       - TZ=Asia/Shanghai
       - PYTHONUNBUFFERED=1
+      # 容器内路径覆盖（H6）：数据落持久化卷、模型指向内置权重
+      - AIQC_DB_PATH=/app/data/inspection.db
+      - AIQC_MODEL_PATH=/app/model/yolov8n.pt
+      # 生产务必覆盖（可在宿主机 .env 中设置后通过 ${VAR} 注入；留空则沿用配置默认值）
+      - AIQC_SECRET_KEY=${AIQC_SECRET_KEY:-}
+      - AIQC_ADMIN_PASSWORD=${AIQC_ADMIN_PASSWORD:-}
     networks:
       - aibc-network
     healthcheck:

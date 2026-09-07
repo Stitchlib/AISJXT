@@ -1,0 +1,18 @@
+# 项目级工具配置。当前仅承载 ruff（Python lint 基线门禁，第三期任务 0.2）。
+# 基线策略：只启用 pyflakes + 语法级错误（E4/E7/E9/F），拦截真实缺陷
+# （未定义名称 F821、未使用变量/导入、重复定义），不引入风格类噪音。
+# 历史风格问题（UP/BLE/S/RUF 等 500+ 处）不在本期门禁范围，后续按域渐进收敛。
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = [
+    "_archive_legacy",
+    "htmlcov",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
