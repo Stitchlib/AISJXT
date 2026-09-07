@@ -6,10 +6,9 @@ on:
   pull_request:
     branches: [main]
 
-# 诊断步需要 issues:write 开诊断 issue；默认 token 权限为只读（v2.0.0 实证 403）。
+# 最小权限：仅读代码（此前诊断期临时授予的 issues:write 已随诊断步移除）
 permissions:
   contents: read
-  issues: write
 
 jobs:
   backend-lint:
@@ -52,27 +51,7 @@ jobs:
         # 二者均排除，本地/验收机专项运行。test_video_stream 已 mock 化恢复纳入。
         # soak_guard 自测（秒级、无硬件依赖）保留在门禁内。
         # 覆盖率门禁基线 75%（本地实测 81%，为环境波动留余量）。
-        run: |
-          set -o pipefail
-          pytest tests/ -p no:logging -q -m "not perf" -k "not network_scan" \
-            --cov=edge/src --cov-report=term-missing --cov-fail-under=75 \
-            --tb=short -rf 2>&1 | tee pytest_output.txt
-
-      # —— 临时诊断步（第三期任务 0.2 收口后移除）：CI 无日志访问权限，
-      #    失败时将 pytest 输出开为仓库 issue，便于离线定位环境差异 ——
-      - name: Diagnose failure (open issue with pytest output)
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          BODY=$(tail -c 60000 pytest_output.txt)
-          TITLE="CI诊断 ${GITHUB_SHA::7} backend-test"
-          jq -n --arg t "$TITLE" --arg b "$BODY" '{title:$t, body:$b}' > payload.json
-          curl -s -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues \
-            -d @payload.json | jq -r '.html_url // .message'
+        run: pytest tests/ -p no:logging -q -m "not perf" -k "not network_scan" --cov=edge/src --cov-report=term-missing --cov-fail-under=75
 
   frontend-build:
     runs-on: ubuntu-latest
