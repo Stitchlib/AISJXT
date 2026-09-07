@@ -11,11 +11,22 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
 EDGE = Path(__file__).resolve().parent.parent / "edge"
 if str(EDGE) not in sys.path:
     sys.path.insert(0, str(EDGE))
 
 import src.config_manager as cm_mod  # noqa: E402
+from main import app  # noqa: E402
+
+
+@pytest.fixture
+def client():
+    """共享的应用客户端：使用 conftest 注入的临时配置/数据库，保证测试隔离。"""
+    with TestClient(app) as c:
+        yield c
 
 _TMP = Path(tempfile.mkdtemp(prefix="aiqc_test_"))
 CFG_PATH = _TMP / "config" / "config.json"
@@ -29,3 +40,11 @@ data["db_path"] = DB_PATH
 CFG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 cm_mod.ConfigManager._resolve_path = staticmethod(lambda: str(CFG_PATH))
+
+# 模型权重上传目录重定向到临时目录，避免测试向真实的 edge/model 写入
+# （沙箱会拦截对 edge/model 的写入，且真实权重不应被测试占位文件污染）。
+import src.routers.model_versions as _mv_mod  # noqa: E402
+
+_MV_DIR = _TMP / "models"
+_MV_DIR.mkdir(parents=True, exist_ok=True)
+_mv_mod.MODEL_DIR = _MV_DIR

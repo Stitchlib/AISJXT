@@ -9,24 +9,14 @@
 - 实时链路：WebSocket 指令驱动 -> 检测循环 -> 结果广播 -> 数据库持久化
 - 跨模块数据流转：检测结果可被查询与统计（证明 detector->db->api 全链路打通）
 """
-import json
 import sys
 from pathlib import Path
 
-import pytest
 
 EDGE = Path(__file__).resolve().parent.parent / "edge"
 if str(EDGE) not in sys.path:
     sys.path.insert(0, str(EDGE))
 
-from fastapi.testclient import TestClient  # noqa: E402
-from main import app  # noqa: E402
-
-
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
 
 
 def test_root(client):
@@ -90,7 +80,8 @@ def test_model_versions_contract(client):
 
 def test_inspection_websocket_to_persistence(client):
     """核心跨模块链路验证：WS 启动 -> 实时推送 -> 数据库持久化 -> 可查询/统计。"""
-    with client.websocket_connect("/ws") as ws:
+    tok = _login(client).json()["access_token"]
+    with client.websocket_connect(f"/ws?token={tok}") as ws:
         ws.send_json({"action": "start", "camera_id": "cam_001"})
         ctrl = ws.receive_json()
         assert ctrl["type"] == "control" and ctrl["status"] == "ok"
@@ -197,7 +188,7 @@ def test_alert_rule_and_event(client):
     ev = client.get("/api/v1/alerts/events", headers=h)
     assert ev.status_code == 200
     total = ev.json()["total"]
-    assert total >= 1, f"检测已运行但未产生任何告警事件（total_processed 见状态）"
+    assert total >= 1, "检测已运行但未产生任何告警事件（total_processed 见状态）"
     eid = ev.json()["items"][0]["id"]
     assert client.post(f"/api/v1/alerts/events/{eid}/acknowledge", headers=h).status_code == 200
     assert client.delete(f"/api/v1/alerts/rules/{rule_id}", headers=h).status_code == 200
@@ -214,30 +205,59 @@ def test_reports_summary_and_export(client):
     assert ex.headers["content-type"].find("spreadsheet") >= 0
 
 
-# ---------- 模型版本（上传/激活/删除） ----------
-def test_model_version_upload_activate_delete(client):
+# ---------- 模型版本（上传/激活/删除，遵守 L5 禁止删除激活版本） ----------
+def test_model_version_upload_activate_delete(client, monkeypatch):
+    """全生命周期：上传 -> 激活 -> 切换激活 -> 删除非激活版本。
+
+    L5 安全规则禁止删除「正在使用的激活版本」，因此删除前必须先切换到其它版本。
+    本用例聚焦版本生命周期管理：本环境装有 ultralytics，dummy 权重会被加载校验
+    （M4）拒绝，故 mock 掉校验；校验本身依赖真实权重，由模型加载环境另行覆盖。
+    """
     tok = _login(client).json()["access_token"]
     h = {"Authorization": f"Bearer {tok}"}
     import io
-    # 使用测试专用文件名，避免污染模型目录或与真实权重（yolov8n.pt）冲突
-    files = {"file": ("_upload_test_dummy.pt", io.BytesIO(b"dummy model weights"), "application/octet-stream")}
-    data = {"name": "v1", "version": "1.0.0", "metric": 0.9, "description": "test", "activate": "false"}
-    r = client.post("/api/v1/model-versions/upload", headers=h, files=files, data=data)
-    assert r.status_code == 201
-    mv_id = r.json()["id"]
-    fp = r.json().get("file_path")
-    try:
-        assert client.post(f"/api/v1/model-versions/{mv_id}/activate", headers=h).status_code == 200
-        assert client.get("/api/v1/model-versions", headers=h).json()["active_id"] == mv_id
-        assert client.delete(f"/api/v1/model-versions/{mv_id}", headers=h).status_code == 200
-    finally:
-        # 确保测试产生的权重文件被清理，避免遗留占位文件干扰其他用例
+    import uuid
+
+    import src.routers.model_versions as mv_router
+
+    monkeypatch.setattr(mv_router, "_validate_model_load", lambda p: True)
+    # 激活会改写 model_path/enable_simulation，测试结束后还原，避免污染其它用例
+    cfg_before = client.get("/api/v1/config", headers=h).json()
+
+    def _upload(activate: bool):
+        # 使用唯一文件名，避免与真实权重（yolov8n.pt）或仓库内既有占位文件冲突
+        unique_name = f"_upload_test_{uuid.uuid4().hex}.pt"
+        files = {"file": (unique_name, io.BytesIO(b"dummy model weights"), "application/octet-stream")}
+        data = {"name": "v", "version": "1.0.0", "activate": "true" if activate else "false"}
+        r = client.post("/api/v1/model-versions/upload", headers=h, files=files, data=data)
+        assert r.status_code == 201, r.text
+        return r.json()["id"], r.json().get("file_path")
+
+    a_id, a_fp = _upload(False)
+    b_id, b_fp = _upload(False)
+    # 激活 A
+    assert client.post(f"/api/v1/model-versions/{a_id}/activate", headers=h).status_code == 200
+    assert client.get("/api/v1/model-versions", headers=h).json()["active_id"] == a_id
+    # 切换到 B（A 随之变为非激活）
+    assert client.post(f"/api/v1/model-versions/{b_id}/activate", headers=h).status_code == 200
+    assert client.get("/api/v1/model-versions", headers=h).json()["active_id"] == b_id
+    # 删除非激活的 A（L5 允许）
+    assert client.delete(f"/api/v1/model-versions/{a_id}", headers=h).status_code == 200
+    # 删除激活中的 B 应被 L5 拒绝
+    assert client.delete(f"/api/v1/model-versions/{b_id}", headers=h).status_code == 400
+    # 清理遗留权重文件（沙箱可能拦截 os.remove，失败时忽略）
+    for fp in (a_fp, b_fp):
         if fp:
             try:
                 import os
                 os.remove(fp)
             except OSError:
                 pass
+    # 还原被激活操作改写的检测配置
+    client.put("/api/v1/config", headers=h, json={
+        "model_path": cfg_before.get("model_path") or "",
+        "enable_simulation": bool(cfg_before.get("enable_simulation")),
+    })
 
 
 # ---------- 用户管理（admin） ----------

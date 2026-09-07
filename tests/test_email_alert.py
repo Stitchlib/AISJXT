@@ -9,10 +9,8 @@
 使用轻量 ConfigManager 包装（不调用 .update()，避免改写仓库 config.json）。
 """
 import asyncio
-import smtplib
 import sys
 import threading
-import time
 from email.parser import BytesParser
 import email.policy
 from pathlib import Path

@@ -5,9 +5,7 @@
   导致「选 RTSP 却永远不取真流」。normalize/infer/is_real 统一处理别名。
 - 共享帧总线：一台摄像头只开一路采集，视频流与检测引擎共用同一路帧。
 """
-import time
 
-from fastapi.testclient import TestClient
 
 from src.models import (
     CameraInfo,

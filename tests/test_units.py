@@ -34,22 +34,36 @@ def test_database_insert_query(tmp_path):
 
 
 def test_database_statistics(tmp_path):
+    # 修正后的缺陷率语义（H3）：以"含缺陷的帧占比"口径统计 = 缺陷帧数 / 总帧数，
+    # 不再使用逐帧随机"抽检总数"。这里插入 2 帧，其中 1 帧含缺陷 → 缺陷率 0.5。
     db = Database(str(tmp_path / "t.db"))
     db.insert_result(
         {
-            "timestamp": "t", "camera_id": "c1", "defects": [],
-            "total_count": 10, "defect_count": 2, "defect_rate": 0.2,
+            "timestamp": "t1", "camera_id": "c1", "defects": [],
+            "total_count": 5, "defect_count": 0, "defect_rate": 0.0,
+            "processing_time_ms": 20.0, "is_simulation": True,
+        }
+    )
+    db.insert_result(
+        {
+            "timestamp": "t2", "camera_id": "c1",
+            "defects": [{"class_name": "线头", "confidence": 0.9, "bbox": {"x": 1, "y": 1, "width": 2, "height": 2}}],
+            "total_count": 3, "defect_count": 2, "defect_rate": 1.0,
             "processing_time_ms": 20.0, "is_simulation": True,
         }
     )
     stats = db.get_statistics()
-    assert stats["total"] == 1
-    assert stats["defect_rate"] == 0.2
+    assert stats["total"] == 2
+    assert stats["defect_count"] == 2
+    assert stats["defect_rate"] == 0.5  # 2 帧中 1 帧含缺陷
 
 
 def test_detector_default_is_simulation():
-    cfg = ConfigManager().get()
-    det = build_detector(cfg)
+    # 默认配置（无模型路径）必须降级为标注仿真。显式构造 AppConfig 而非读全局
+    # ConfigManager 单例——后者可能被环境（真实权重 config.json）覆盖，与本测试意图无关。
+    from src.config_manager import AppConfig
+
+    det = build_detector(AppConfig())
     assert det.is_simulation is True
     res = det.detect()
     assert "defect_count" in res and "processing_time_ms" in res
@@ -65,7 +79,6 @@ def test_detection_result_contract():
 # ---------- 认证与权限（单元） ----------
 def test_auth_service_create_and_authenticate(tmp_path):
     from src.auth import AuthService
-    from src.config_manager import ConfigManager
     from src.database import Database
 
     db = Database(str(tmp_path / "auth.db"))
@@ -82,12 +95,11 @@ def test_auth_service_create_and_authenticate(tmp_path):
 
 def test_auth_password_hashing_uses_pbkdf2(tmp_path):
     from src.auth import AuthService
-    from src.config_manager import ConfigManager
     from src.database import Database
 
     db = Database(str(tmp_path / "auth2.db"))
     cm = ConfigManager()
-    svc = AuthService(db, cm)
+    AuthService(db, cm)  # 构造即种子 admin
     row = db.get_user_by_username("admin")
     # salt 与 hash 均以十六进制存储，且哈希长度符合 pbkdf2_sha256(100k)
     assert len(row["salt"]) == 32  # 16 字节 -> 32 十六进制
@@ -96,14 +108,13 @@ def test_auth_password_hashing_uses_pbkdf2(tmp_path):
 
 # ---------- 告警评估 ----------
 def test_notifier_triggers_event_on_breach(tmp_path):
-    from src.config_manager import ConfigManager
     from src.database import Database
     from src.models import DetectionResult
     from src.notifier import process_alerts
 
     db = Database(str(tmp_path / "alert.db"))
     cm = ConfigManager()
-    rid = db.create_alert_rule({
+    db.create_alert_rule({
         "name": "t", "metric": "defect_rate", "operator": "ge",
         "threshold": 0.0, "scope": "all", "enabled": True,
     })
@@ -116,7 +127,6 @@ def test_notifier_triggers_event_on_breach(tmp_path):
 
 
 def test_notifier_no_trigger_below_threshold(tmp_path):
-    from src.config_manager import ConfigManager
     from src.database import Database
     from src.models import DetectionResult
     from src.notifier import process_alerts
