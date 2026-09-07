@@ -20,7 +20,7 @@ import logging
 import os
 import time
 from functools import lru_cache
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 logger = logging.getLogger("video_stream")
 
@@ -330,6 +330,37 @@ def encode_jpeg(frame: "np.ndarray", quality: int = 82) -> Optional[bytes]:
     return buf.tobytes() if ok else None
 
 
+def draw_roi_overlay(frame: "np.ndarray", rois) -> int:
+    """在画面上叠加 ROI 边界（G6）：青色矩形 + 虚线感角标，归一化坐标转像素。
+
+    仅画边框不遮挡画面；rois 为空返回 0。
+    """
+    if not _CV2 or not rois:
+        return 0
+    try:
+        h, w = frame.shape[:2]
+        color = (208, 224, 24)  # 青黄色，与缺陷框配色区分
+        drawn = 0
+        for r in rois or []:
+            try:
+                x = float(r.x if hasattr(r, "x") else r["x"])
+                y = float(r.y if hasattr(r, "y") else r["y"])
+                rw = float(r.w if hasattr(r, "w") else r["w"])
+                rh = float(r.h if hasattr(r, "h") else r["h"])
+            except (TypeError, ValueError):
+                continue
+            x1, y1 = int(x * w), int(y * h)
+            x2, y2 = min(w - 1, int((x + rw) * w)), min(h - 1, int((y + rh) * h))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            draw_text(frame, "ROI", x1 + 4, y1 + 4, 14, color)
+            drawn += 1
+        return drawn
+    except Exception:
+        return 0
+
+
 def render_frame(
     hub,
     camera,
@@ -352,9 +383,9 @@ def render_frame(
 
     if engine is not None:
         try:
-            inspecting = bool(getattr(engine, "running", False)) and (
-                getattr(engine, "active_camera_id", None) == camera.id
-            )
+            # G5：多摄并发下按 running_cameras 判断该摄是否在检
+            running_ids = {rc.get("camera_id") for rc in (engine.status().get("running_cameras") or [])}
+            inspecting = camera.id in running_ids
             detector_mode = getattr(engine, "detector_mode", None)
         except Exception:
             inspecting = False
@@ -365,6 +396,9 @@ def render_frame(
             defect_count = draw_detections(img, ann.get("defects"), ann.get("shape"))
             inspecting = True
             detector_mode = (ann.get("meta") or {}).get("detector_mode", detector_mode)
+
+    # G6：ROI 边界叠加显示（有配置即画，与是否检出无关）
+    draw_roi_overlay(img, getattr(camera, "roi", None))
 
     if not is_real and getattr(hub, "want_real", False):
         note = "摄像头未连通，正在重试"

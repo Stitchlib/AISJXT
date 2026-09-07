@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..camera_capture import build_authed_source, probe_source
 from ..config_manager import CameraConfig
-from ..models import CameraInfo, CameraType, User, infer_camera_type, normalize_camera_type
+from ..models import ActiveCameraResult, CameraInfo, CameraType, RoiRect, infer_camera_type, normalize_camera_type
 
 router = APIRouter(prefix="/cameras", tags=["cameras"], dependencies=[Depends(get_current_user)])
 
@@ -20,6 +20,7 @@ class CameraCreate(BaseModel):
     enabled: bool = True
     username: Optional[str] = None
     password: Optional[str] = None
+    roi: Optional[List[RoiRect]] = None  # G6：检测区域（归一化矩形列表）
 
 
 class CameraUpdate(BaseModel):
@@ -30,6 +31,8 @@ class CameraUpdate(BaseModel):
     source: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
+    # G6：检测区域；None=不修改，[]=清空（恢复全画面检测）
+    roi: Optional[List[RoiRect]] = None
 
 
 class CameraDiscover(BaseModel):
@@ -45,7 +48,7 @@ class CameraTest(BaseModel):
     password: Optional[str] = None
 
 
-@router.get("")
+@router.get("", response_model=list[CameraInfo])
 def list_cameras(request: Request):
     return request.app.state.cam.list()
 
@@ -56,7 +59,7 @@ def scan_network(request: Request, subnet: str = "192.168.1"):
     return {"subnet": subnet, "found": request.app.state.cam.scan_network(subnet)}
 
 
-@router.get("/{cam_id}")
+@router.get("/{cam_id}", response_model=CameraInfo)
 def get_camera(cam_id: str, request: Request):
     cam = request.app.state.cam.get(cam_id)
     if not cam:
@@ -64,7 +67,7 @@ def get_camera(cam_id: str, request: Request):
     return cam
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=CameraInfo)
 def add_camera(body: CameraCreate, request: Request):
     """添加摄像头。
 
@@ -74,6 +77,11 @@ def add_camera(body: CameraCreate, request: Request):
     """
     cm = request.app.state.cm
     payload = body.model_dump()
+    # G6：roi=None 表示"未提供"（用模型默认空列表）；显式传 None 会让
+    # CameraInfo 的 List[RoiRect] 校验抛 ValidationError（ValueError 子类），
+    # 被下方 except ValueError 捕获误报 409，故先剔除。
+    if payload.get("roi") is None:
+        payload.pop("roi", None)
     ctype = normalize_camera_type(body.type) if body.type else infer_camera_type(body.source)
     payload["type"] = ctype
     try:
@@ -90,7 +98,7 @@ def add_camera(body: CameraCreate, request: Request):
     return request.app.state.cam.get(body.id)
 
 
-@router.put("/{cam_id}")
+@router.put("/{cam_id}", response_model=CameraInfo)
 def update_camera(cam_id: str, body: CameraUpdate, request: Request):
     cam = request.app.state.cam.get(cam_id)
     if not cam:
@@ -104,6 +112,9 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request):
     if body.type is not None:
         # 允许纠正历史脏类型（如把误设的 simulated 改回 rtsp 以真正取流）
         cam.type = CameraType(normalize_camera_type(body.type))
+    if body.roi is not None:
+        # G6：None=不修改，[]=清空恢复全画面
+        cam.roi = body.roi
     cm = request.app.state.cm
     for c in cm.get().cameras:
         if c.id == cam_id:
@@ -115,6 +126,8 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request):
                 c.status = body.status
             if body.type is not None:
                 c.type = normalize_camera_type(body.type)
+            if body.roi is not None:
+                c.roi = body.roi
             # 凭据/来源更新：重新注入鉴权信息
             if body.source is not None or body.username is not None or body.password is not None:
                 new_source = body.source if body.source is not None else c.source
@@ -179,7 +192,7 @@ def discover_cameras(body: CameraDiscover, request: Request):
     return {"added": [c.model_dump() for c in added], "count": len(added)}
 
 
-@router.put("/{cam_id}/active")
+@router.put("/{cam_id}/active", response_model=ActiveCameraResult)
 def set_active_camera(cam_id: str, request: Request):
     cam = request.app.state.cam.get(cam_id)
     if not cam:

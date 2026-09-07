@@ -8,14 +8,16 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
 import logging
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 
 from .config_manager import ConfigManager
 from .database import Database
@@ -23,11 +25,16 @@ from .models import LoginRequest, Token, User, UserRole
 
 logger = logging.getLogger("auth")
 
+# 登录失败限流（M6）：同账号连续失败达到上限后锁定一段时间（内存计数，单实例足够）。
+_MAX_FAIL = 5
+_LOCK_SECONDS = 10 * 60
+
 
 class AuthService:
     def __init__(self, db: Database, cm: ConfigManager) -> None:
         self._db = db
         self._cm = cm
+        self._fail: dict[str, list] = {}  # username -> [fail_count, lock_until_ts]
         self._seed_admin()
 
     # ---- 密钥与时效 ----
@@ -46,17 +53,71 @@ class AuthService:
                 salt, h = _hash_password("admin123")
                 self._db.create_user("admin", "系统管理员", UserRole.ADMIN.value, salt, h)
                 logger and logger.info("已创建默认管理员账号 admin / admin123")
+            # H5：若设置了环境变量 AIQC_ADMIN_PASSWORD，则用其覆盖默认口令（首次或每次启动均生效）
+            env_pwd = os.environ.get("AIQC_ADMIN_PASSWORD")
+            if env_pwd:
+                self.force_set_admin_password(env_pwd)
+                logger and logger.info("已通过环境变量 AIQC_ADMIN_PASSWORD 覆盖管理员口令")
         except Exception as e:  # pragma: no cover - 极端初始化失败
             logger and logger.warning("admin 种子失败: %s", e)
 
+    def force_set_admin_password(self, password: str) -> bool:
+        """强制设置 admin 口令（用于环境变量覆盖或运维重置）。"""
+        row = self._db.get_user_by_username("admin")
+        if not row:
+            return False
+        salt, h = _hash_password(password)
+        self._db.set_user_password_by_username("admin", salt, h)
+        self._fail.pop("admin", None)
+        return True
+
+    def force_set_user_password(self, user_id: int, password: str) -> bool:
+        """按 id 强制设置任意用户口令（M6 改密端点使用）。"""
+        row = self._db.get_user_by_id(user_id)
+        if not row:
+            return False
+        salt, h = _hash_password(password)
+        self._db.set_user_password_by_username(row["username"], salt, h)
+        self._fail.pop(row["username"], None)
+        return True
+
     # ---- 认证 ----
+    def _locked_until(self, username: str) -> Optional[float]:
+        rec = self._fail.get(username)
+        if not rec:
+            return None
+        count, until = rec
+        if count >= _MAX_FAIL and until and time.time() < until:
+            return until
+        if until and time.time() >= until:
+            # 锁定期已过，重置计数
+            self._fail.pop(username, None)
+        return None
+
     def authenticate(self, username: str, password: str) -> Optional[User]:
+        lock = self._locked_until(username)
+        if lock is not None:
+            logger.warning("账号 %s 处于登录失败锁定中，剩余 %.0fs", username, lock - time.time())
+            return None
         row = self._db.get_user_by_username(username)
         if not row or row["disabled"]:
             return None
         if not _verify_password(password, row["salt"], row["password_hash"]):
+            self._register_fail(username)
             return None
+        # 成功登录清零失败计数
+        self._fail.pop(username, None)
         return _row_to_user(row)
+
+    def _register_fail(self, username: str) -> None:
+        rec = self._fail.get(username)
+        if not rec:
+            rec = [0, 0.0]
+            self._fail[username] = rec
+        rec[0] += 1
+        if rec[0] >= _MAX_FAIL:
+            rec[1] = time.time() + _LOCK_SECONDS
+            logger.warning("账号 %s 登录失败次数过多，已锁定 %ds", username, _LOCK_SECONDS)
 
     def login(self, req: LoginRequest) -> Optional[Token]:
         u = self.authenticate(req.username, req.password)
@@ -64,6 +125,17 @@ class AuthService:
             return None
         token = _create_token(u.username, u.role.value, self._exp_min, self._secret)
         return Token(access_token=token, user=u)
+
+    def refresh_token(self, token: str) -> Optional[Token]:
+        """滑动过期刷新（3.5）：仅当原令牌仍有效（未过期）时签发新令牌，身份不变。"""
+        payload = _decode_token(token, self._secret)
+        if not payload or "sub" not in payload:
+            return None
+        row = self._db.get_user_by_username(payload["sub"])
+        if not row or row["disabled"]:
+            return None
+        new_token = _create_token(row["username"], row["role"], self._exp_min, self._secret)
+        return Token(access_token=new_token, user=_row_to_user(row))
 
     def get_current_user(self, request: Request) -> User:
         header = request.headers.get("Authorization", "")
@@ -163,3 +235,20 @@ def get_auth_service(request: Request) -> AuthService:
 def get_current_user(request: Request) -> User:
     """FastAPI 依赖：从请求头解析 Bearer Token 并返回当前用户（无效则 401）。"""
     return request.app.state.auth.get_current_user(request)
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """FastAPI 依赖：要求当前用户为 admin，否则 403（M5/L5 等越权防护复用）。"""
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return user
+
+
+def require_operator(user: User = Depends(get_current_user)) -> User:
+    """FastAPI 依赖：要求 admin 或 operator（viewer 403）。
+
+    供"告警人工判定"等操作类但非管理类的接口使用（第二期 G2）。
+    """
+    if user.role not in (UserRole.ADMIN, UserRole.OPERATOR):
+        raise HTTPException(status_code=403, detail="需要操作员及以上权限")
+    return user

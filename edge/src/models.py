@@ -5,11 +5,16 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+
+
+def utc_iso() -> str:
+    """统一以 UTC 时区存储时间戳（M13），格式 ISO 8601 含 +00:00，便于跨时区排序与聚合。"""
+    return datetime.now(timezone.utc).isoformat()
 
 
 class DefectClass(str, Enum):
@@ -37,7 +42,7 @@ class Defect(BaseModel):
 class DetectionResult(BaseModel):
     """一次检测的结果。WebSocket 推送与数据库存储均使用此结构。"""
     id: Optional[int] = None
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = Field(default_factory=utc_iso)
     camera_id: str = "cam_sim"
     image_path: Optional[str] = None
     defects: List[Defect] = Field(default_factory=list)
@@ -46,6 +51,11 @@ class DetectionResult(BaseModel):
     defect_rate: float = 0.0
     processing_time_ms: float = 0.0
     is_simulation: bool = False
+    # 指标语义版本（H3 治理）：1=含随机数的旧口径（不可信），2=真实检出口径。
+    # 仿真数据标记 1、真实推理标记 2，报表据此区分历史不可信数据。
+    metric_version: int = 2
+    # 批次绑定（第二期 G4）：绑定后该条记录归属对应生产批次；未绑定为 None
+    batch_id: Optional[str] = None
 
     def to_db_row(self) -> dict:
         """转换为数据库行（defects 序列化为 JSON 字符串）。"""
@@ -59,6 +69,8 @@ class DetectionResult(BaseModel):
             "defect_rate": self.defect_rate,
             "processing_time_ms": self.processing_time_ms,
             "is_simulation": self.is_simulation,
+            "metric_version": self.metric_version,
+            "batch_id": self.batch_id,
         }
 
 
@@ -139,6 +151,15 @@ def infer_camera_type(source) -> str:
     return CameraType.SIMULATED.value
 
 
+class RoiRect(BaseModel):
+    """归一化 ROI 矩形（第二期 G6）：左上角 (x, y) + 尺寸 (w, h)，取值 0~1。"""
+
+    x: float = Field(..., ge=0.0, le=1.0)
+    y: float = Field(..., ge=0.0, le=1.0)
+    w: float = Field(..., gt=0.0, le=1.0)
+    h: float = Field(..., gt=0.0, le=1.0)
+
+
 class CameraInfo(BaseModel):
     id: str
     name: str
@@ -147,6 +168,7 @@ class CameraInfo(BaseModel):
     enabled: bool = True
     status: str = "unknown"  # online / offline / unknown
     resolution: Optional[str] = None
+    roi: List[RoiRect] = []  # G6：检测区域（归一化矩形列表），空表示全画面
 
 
 class SystemHealth(BaseModel):
@@ -158,10 +180,19 @@ class SystemHealth(BaseModel):
     psutil_available: bool = True
 
 
+class CameraRuntimeStatus(BaseModel):
+    """单摄像头运行时状态（第二期 G5 多摄并发）。"""
+
+    camera_id: str
+    total_processed: int = 0
+
+
 class InspectionStatus(BaseModel):
     running: bool = False
     total_processed: int = 0
     active_camera_id: Optional[str] = None
+    active_batch_id: Optional[str] = None
+    running_cameras: List[CameraRuntimeStatus] = []  # G5：每摄任务与分摄计数
     last_result: Optional[DetectionResult] = None
     detector_mode: str = "simulation"  # simulation / yolo
 
@@ -216,6 +247,9 @@ class AlertRule(BaseModel):
     scope: str = "all"  # all 或具体 camera_id
     enabled: bool = True
     notify_email: Optional[str] = None
+    # 多渠道通知（第二期 G3）：webhook 渠道 URL 与类型
+    webhook_url: Optional[str] = None
+    webhook_type: Optional[str] = None  # generic / dingtalk / feishu / wecom
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -229,6 +263,48 @@ class AlertEvent(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     acknowledged: bool = False
     notified: bool = False
+    # G2 人工判定字段（与 alert_events 表列对应；response_model 需完整保留，防字段被吞）
+    result_id: Optional[int] = None
+    verdict: str = "pending"  # pending / confirmed / false_positive / missed
+    remark: Optional[str] = ""
+    judged_by: Optional[str] = None
+    judged_at: Optional[str] = None
+
+
+class AlertEventPage(BaseModel):
+    """告警事件分页响应（G9）。"""
+
+    page: int
+    page_size: int
+    total: int
+    items: List[AlertEvent]
+
+
+class AckResult(BaseModel):
+    ok: bool
+    acknowledged: int
+
+
+class InspectionStartResult(BaseModel):
+    """检测启动响应（G5 多摄）。"""
+
+    status: str
+    active_camera_id: Optional[str] = None
+    active_batch_id: Optional[str] = None
+    running_cameras: List[CameraRuntimeStatus] = []
+
+
+class InspectionStopResult(BaseModel):
+    """检测停止响应（G5 支持单停/全停）。"""
+
+    status: str
+    running: bool = False
+    running_cameras: List[CameraRuntimeStatus] = []
+
+
+class ActiveCameraResult(BaseModel):
+    ok: bool
+    active_camera_id: str
 
 
 # ---------- 自定义瑕疵类型 ----------
@@ -278,3 +354,32 @@ class ReportSummary(BaseModel):
     avg_processing_ms: float
     by_type: List[TypeShare] = Field(default_factory=list)
     trend: List[TrendPoint] = Field(default_factory=list)
+
+
+# ---------- 批次管理（第二期 G4） ----------
+class BatchInfo(BaseModel):
+    id: Optional[int] = None
+    batch_no: str
+    product: str = ""
+    started_at: str = ""
+    ended_at: Optional[str] = None
+    note: str = ""
+
+
+class BatchReport(BaseModel):
+    batch_id: str
+    total: int
+    defect_count: int
+    total_count: int
+    defect_rate: float
+    defect_frame_rate: float
+    avg_processing_ms: float
+    by_type: List[TypeShare] = Field(default_factory=list)
+
+
+# ---------- 备份与恢复（第二期 G7a） ----------
+class BackupInfo(BaseModel):
+    path: str
+    filename: str
+    size_bytes: int
+    created_at: str

@@ -5,7 +5,6 @@ inspection_engine 产生检测结果后调用 broadcast()；前端订阅后实�
 """
 from __future__ import annotations
 
-import asyncio
 from typing import Dict, List
 
 from fastapi import WebSocket

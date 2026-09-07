@@ -1,21 +1,31 @@
-"""告警与通知：规则评估 + 应用内事件 + 可选邮件。
+"""告警与通知：规则评估 + 应用内事件 + 邮件 + 多渠道 webhook。
 
 职责边界：
-- process_alerts：由 inspection_engine 在每次检测后调用，命中规则则落库 alert_events 并(可选)发邮件。
+- process_alerts：由 inspection_engine 在每次检测后调用，命中规则则落库 alert_events 并(可选)发邮件/webhook。
 - send_email：SMTP 可选，未启用或失败时安全降级（仅记录日志，不影响主流程）。
+- send_webhook：HTTP POST 到钉钉/飞书/企微/通用机器人（均为标准 HTTP，无需 SDK）。
+  - 慢 webhook（如企业机器人）通过 asyncio.to_thread 在引擎侧异步调用，不影响检测循环节拍；
+  - 发送失败重试 1 次后仅记日志与标记 notified 状态，绝不"轰炸"或阻塞主流程。
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
-import smtplib
+import urllib.request
+import urllib.error
 from email.message import EmailMessage
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .config_manager import ConfigManager
 from .database import Database
 from .models import DetectionResult
 
 logger = logging.getLogger("notifier")
+
+# 支持的 webhook 类型白名单（第二期 G3）
+VALID_WEBHOOK_TYPES = ("generic", "dingtalk", "feishu", "wecom")
 
 
 def _compare(value: float, op: str, threshold: float) -> bool:
@@ -40,6 +50,75 @@ def _metric_value(result: DetectionResult, metric: str) -> Optional[float]:
     return None
 
 
+def _build_webhook_payload(webhook_type: str, text: str) -> dict:
+    """按机器人类型封装消息体（均为各平台约定的 JSON 结构）。"""
+    wt = (webhook_type or "generic").lower()
+    if wt == "dingtalk":
+        return {"msgtype": "text", "text": {"content": text}}
+    if wt == "feishu":
+        return {"msg_type": "text", "content": {"text": text}}
+    if wt == "wecom":
+        return {"msgtype": "text", "text": {"content": text}}
+    # generic：透传 {text: ...}（可选 HMAC 签名头由调用方加）
+    return {"text": text}
+
+
+def _post_json(url: str, payload: dict, secret: Optional[str] = None, timeout: int = 10) -> int:
+    """同步 POST JSON；失败时抛异常由调用方处理重试。返回 HTTP 状态码。"""
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    headers = {"Content-Type": "application/json", "User-Agent": "AIQC-Notifier/1.0"}
+    if secret:
+        # 通用类型可选 HMAC-SHA256 签名头，便于服务端校验来源
+        sig = hmac.new(secret.encode("utf-8"), data, hashlib.sha256).hexdigest()
+        headers["X-Signature"] = f"sha256={sig}"
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.getcode() or 200
+
+
+def send_webhook(
+    url: str,
+    webhook_type: str,
+    text: str,
+    secret: Optional[str] = None,
+    timeout: int = 10,
+    retries: int = 1,
+) -> Tuple[bool, Optional[str]]:
+    """发送 webhook 通知；失败重试最多 retries 次（默认 1 次）。
+
+    返回 (ok, error_message)。任何异常都被捕获并降级，绝不让调用方崩溃。
+    """
+    wt = (webhook_type or "generic").lower()
+    if wt not in VALID_WEBHOOK_TYPES:
+        return False, f"不支持的 webhook_type: {webhook_type}"
+    payload = _build_webhook_payload(wt, text)
+    last_err: Optional[str] = None
+    for attempt in range(retries + 1):
+        try:
+            status = _post_json(url, payload, secret, timeout)
+            if 200 <= status < 300:
+                return True, None
+            last_err = f"HTTP {status}"
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}: {e.reason}"
+        except Exception as e:  # 网络/超时/URL 错误等
+            last_err = str(e)
+        if attempt < retries:
+            logger.warning("webhook 发送失败（第 %d 次，将重试）: %s", attempt + 1, last_err)
+    logger.warning("webhook 发送最终失败（已重试 %d 次）: %s", retries, last_err)
+    return False, last_err
+
+
+def test_webhook(url: str, webhook_type: str, timeout: int = 10) -> Tuple[bool, Optional[str]]:
+    """测试发送：用固定测试文案发一次，返回 (ok, message)。"""
+    ok, err = send_webhook(
+        url, webhook_type, "【AI视觉质检】webhook 连通性测试，收到说明配置正常。", timeout=timeout
+    )
+    if ok:
+        return True, "发送成功"
+    return False, err or "发送失败"
+
+
 def send_email(cm: ConfigManager, to: str, subject: str, body: str) -> bool:
     """发送告警邮件；SMTP 未启用或异常时返回 False 并降级。
 
@@ -48,6 +127,8 @@ def send_email(cm: ConfigManager, to: str, subject: str, body: str) -> bool:
     - starttls:  明文连接后升级 TLS（端口通常 587）
     - plain:     明文连接，不加密（仅用于内网/本地调试，如本仓库测试）
     """
+    import smtplib
+
     cfg = cm.get()
     if not cfg.smtp_enabled:
         logger.info("SMTP 未启用，跳过邮件: %s", subject)
@@ -78,7 +159,7 @@ def send_email(cm: ConfigManager, to: str, subject: str, body: str) -> bool:
 
 
 def process_alerts(result: DetectionResult, db: Database, cm: ConfigManager) -> List[int]:
-    """评估启用中的告警规则，命中即记录事件（可选邮件）。返回新建事件 id 列表。"""
+    """评估启用中的告警规则，命中即记录事件（可选邮件/webhook）。返回新建事件 id 列表。"""
     created: List[int] = []
     rules = db.list_alert_rules()
     for r in rules:
@@ -96,8 +177,12 @@ def process_alerts(result: DetectionResult, db: Database, cm: ConfigManager) -> 
             f"规则[{r['name']}] 摄像头[{result.camera_id}] "
             f"{r['metric']}={value:.3f} 触发阈值 {r['threshold']}"
         )
-        aid = db.insert_alert_event(r["id"], result.camera_id, msg, severity, value)
+        aid = db.insert_alert_event(
+            r["id"], result.camera_id, msg, severity, value, result_id=result.id
+        )
         created.append(aid)
+        notified = False
+        # 邮件渠道（可选）
         if r.get("notify_email"):
             body = (
                 f"AI 视觉质检告警\n\n{msg}\n"
@@ -105,5 +190,16 @@ def process_alerts(result: DetectionResult, db: Database, cm: ConfigManager) -> 
                 f"缺陷数: {result.defect_count}/{result.total_count}"
             )
             if send_email(cm, r["notify_email"], "AI视觉质检告警", body):
-                db.mark_alert_notified(aid)
+                notified = True
+        # webhook 渠道（第二期 G3）：统一在引擎侧以 asyncio.to_thread 调用，失败重试 1 次
+        wh_url = r.get("webhook_url")
+        if wh_url:
+            wh_type = r.get("webhook_type") or "generic"
+            ok, _err = send_webhook(wh_url, wh_type, f"AI视觉质检告警\n{msg}")
+            if ok:
+                notified = True
+            else:
+                logger.warning("告警[%s] webhook 通知失败: %s", aid, _err)
+        if notified:
+            db.mark_alert_notified(aid)
     return created

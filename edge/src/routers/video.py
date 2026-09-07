@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from ..models import CameraInfo, CameraType, infer_camera_type, normalize_camera_type
+from ..stream_tickets import authenticate, issue
 from ..video_stream import VideoStreamer, encode_jpeg, render_frame
 
 logger = logging.getLogger("video_router")
@@ -27,17 +28,12 @@ logger = logging.getLogger("video_router")
 router = APIRouter(prefix="/cameras", tags=["video"])
 
 
-def _authenticate_video(request: Request):
-    """视频流鉴权：优先 ?token=，回退 Authorization 头。"""
-    tok = request.query_params.get("token")
-    if not tok:
-        header = request.headers.get("Authorization", "")
-        if header.startswith("Bearer "):
-            tok = header[len("Bearer "):]
-    user = request.app.state.auth.get_user_from_token(tok) if tok else None
-    if user is None:
-        raise HTTPException(status_code=401, detail="未授权：视频流需要有效令牌")
-    return user
+@router.get("/stream-ticket")
+def stream_ticket(request: Request):
+    """签发一次性、60s 有效的视频流票据（M7）。前端先取票据再拼到流 URL，避免 JWT 进日志。"""
+    authenticate(request, request.app.state.auth)  # 需已登录
+    ticket, ttl = issue(request)
+    return {"ticket": ticket, "ttl": ttl}
 
 
 def _require_camera(request: Request, cam_id: str):
@@ -52,7 +48,7 @@ def _require_camera(request: Request, cam_id: str):
 @router.get("/streams/status")
 def streams_status(request: Request):
     """当前所有采集通道的状态：观看人数、是否取到实流、重连次数、打开失败原因。"""
-    _authenticate_video(request)
+    authenticate(request, request.app.state.auth)
     hubs = getattr(request.app.state, "hubs", None)
     return {"streams": hubs.stats() if hubs is not None else []}
 
@@ -71,7 +67,7 @@ def camera_preview(
     不会写入配置，也不会污染已配置的摄像头列表——内部用临时 camera_id 走同一套
     FrameHub 采集与渲染逻辑（含凭据注入、取流失败降级仿真），流关闭后立即作废该临时连接。
     """
-    _authenticate_video(request)
+    authenticate(request, request.app.state.auth)
     if not source or not source.strip():
         raise HTTPException(status_code=400, detail="source 不能为空")
     hubs = request.app.state.hubs
@@ -114,7 +110,7 @@ def camera_preview(
 @router.get("/{cam_id}/video")
 def camera_video(cam_id: str, request: Request, fps: int = 15, annotate: bool = True):
     # 鉴权与校验都在生成器之外完成，确保错误能以正常 HTTP 状态码返回
-    _authenticate_video(request)
+    authenticate(request, request.app.state.auth)
     cam = _require_camera(request, cam_id)
 
     hubs = request.app.state.hubs
@@ -136,7 +132,7 @@ def camera_video(cam_id: str, request: Request, fps: int = 15, annotate: bool = 
 @router.get("/{cam_id}/snapshot")
 def camera_snapshot(cam_id: str, request: Request, annotate: bool = True, quality: int = 85):
     """取单帧 JPEG。用于设备列表缩略图、报告插图，以及"这台摄像头到底通不通"的快速自检。"""
-    _authenticate_video(request)
+    authenticate(request, request.app.state.auth)
     cam = _require_camera(request, cam_id)
 
     hubs = request.app.state.hubs

@@ -14,7 +14,7 @@ except Exception:  # pragma: no cover - 依赖缺失场景
     _HAS_PSUTIL = False
 
 
-def get_system_health() -> dict:
+def get_system_health(extra: dict | None = None) -> dict:
     if _HAS_PSUTIL:
         cpu = psutil.cpu_percent(interval=0.1)
         mem = psutil.virtual_memory().percent
@@ -29,11 +29,20 @@ def get_system_health() -> dict:
     else:
         status = "healthy"
 
-    return {
+    data = {
         "timestamp": datetime.now().isoformat(),
         "cpu_percent": round(cpu, 1),
         "memory_percent": round(mem, 1),
         "disk_percent": round(disk, 1),
         "status": status,
         "psutil_available": _HAS_PSUTIL,
+        # L9 业务级健康指标（由调用方注入）
+        "inference_latency_ms": {"p50": None, "p95": None},
+        "frame_drop_rate": None,
+        "websocket_clients": 0,
+        "db_size_mb": 0.0,
+        "write_qps": 0.0,
     }
+    if extra:
+        data.update(extra)
+    return data

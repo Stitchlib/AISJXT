@@ -187,6 +187,15 @@ class FrameHub:
     def _run(self) -> None:
         interval = 1.0 / self.fps
         next_t = time.time()
+        # 首帧兜底：先出一帧合成画面再建流。RTSP/网络相机握手可达数十秒，
+        # 若等真实流建立，期间前端黑屏、检测引擎拿不到帧（图片留存/标注全部停摆）。
+        first = self._make_synthetic()
+        if first is not None:
+            with self._lock:
+                self._frame = first
+                self._seq += 1
+                self._ts = time.time()
+                self._real_frame = False
         self._open_provider()
         try:
             while not self._stop.is_set():

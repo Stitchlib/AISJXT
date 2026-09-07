@@ -1,13 +1,12 @@
 import json
 import os
 import tempfile
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from ..auth import get_current_user
-from ..models import ReportSummary, TrendPoint, TypeShare, User
+from ..models import BatchReport, ReportSummary, TrendPoint, TypeShare
 
 router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[Depends(get_current_user)])
 
@@ -86,3 +85,11 @@ def export(request: Request, format: str = "excel"):
         path, filename="quality_report.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+@router.get("/batch/{batch_id}", response_model=BatchReport)
+def batch_report(batch_id: str, request: Request):
+    """按批次聚合报表（第二期 G4）：总数/缺陷率/耗时/品类占比，与全局口径一致。"""
+    if not request.app.state.db.get_batch(batch_id):
+        raise HTTPException(status_code=404, detail="批次不存在")
+    return BatchReport(**request.app.state.db.report_by_batch(batch_id))

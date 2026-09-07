@@ -54,8 +54,9 @@ class SimulatedDetector(BaseDetector):
                 )
             )
         elapsed = (time.perf_counter() - start) * 1000
-        total = random.randint(8, 20)
         defect_count = len(defects)
+        # 仿真场景下，"本帧检出对象数"=缺陷框数（仿真仅用于演示数据流，明确标记 is_simulation）。
+        total = defect_count
         return {
             "defects": [d.model_dump() for d in defects],
             "total_count": total,
@@ -63,6 +64,7 @@ class SimulatedDetector(BaseDetector):
             "defect_rate": round(defect_count / total, 3) if total else 0.0,
             "processing_time_ms": round(elapsed + random.uniform(15, 45), 1),
             "is_simulation": True,
+            "metric_version": 1,
         }
 
 
@@ -109,8 +111,12 @@ class YoloDetector(BaseDetector):
                 )
             )
         elapsed = (time.perf_counter() - start) * 1000
-        total = random.randint(8, 20)
+        # 真实推理口径（H3 修正）：本帧检出对象数 = 实际检测到的缺陷框数，
+        # 不再使用随机数伪造"抽检总数"。缺陷率基于真实检出数计算。
+        # 注：本模型为缺陷专用检测（类别即瑕疵类型），"总检数"以检出框计，
+        # 故 total_count == defect_count，per-frame defect_rate 为 0/1（详见聚合层语义）。
         defect_count = len(defects)
+        total = defect_count
         return {
             "defects": [d.model_dump() for d in defects],
             "total_count": total,
@@ -118,6 +124,7 @@ class YoloDetector(BaseDetector):
             "defect_rate": round(defect_count / total, 3) if total else 0.0,
             "processing_time_ms": round(elapsed, 1),
             "is_simulation": False,
+            "metric_version": 2,
         }
 
 
