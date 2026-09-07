@@ -33,9 +33,22 @@ CFG_PATH = _TMP / "config" / "config.json"
 CFG_PATH.parent.mkdir(parents=True, exist_ok=True)
 DB_PATH = str(_TMP / "inspection.db")
 
-# 基于真实配置生成临时配置，仅替换数据库路径（保留摄像头等设置）
+# 基于真实配置生成临时配置，仅替换数据库路径（保留摄像头等设置）。
+# 真实配置不存在时（CI / 新机器：edge/config/config.json 被 gitignore），
+# 注入测试种子配置：cam_001/cam_002 仿真摄像头。
+# 测试套件隐含依赖这两个摄像头（camera 列表非空、WS 启停、stage2c 双仿真并发、
+# cam_001 视频流/ROI）——此前该依赖仅由开发者本机配置满足，是 CI 上
+# 10 个用例失败的根因（cameras=[]、未知摄像头 cam_001、active 回退到
+# discovery 用例注册的 cam_net_192_168_1_50）。
+_SEED_CAMERAS = {
+    "cameras": [
+        {"id": "cam_001", "name": "主摄像头", "type": "simulated", "source": "0", "enabled": True},
+        {"id": "cam_002", "name": "副摄像头", "type": "simulated", "source": "1", "enabled": True},
+    ],
+    "active_camera_id": "cam_001",
+}
 ORIG = EDGE / "config" / "config.json"
-data = json.loads(ORIG.read_text(encoding="utf-8")) if ORIG.exists() else {}
+data = json.loads(ORIG.read_text(encoding="utf-8")) if ORIG.exists() else dict(_SEED_CAMERAS)
 data["db_path"] = DB_PATH
 CFG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
