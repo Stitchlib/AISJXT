@@ -252,3 +252,33 @@ def require_operator(user: User = Depends(get_current_user)) -> User:
     if user.role not in (UserRole.ADMIN, UserRole.OPERATOR):
         raise HTTPException(status_code=403, detail="需要操作员及以上权限")
     return user
+
+
+def require_role(*allowed: UserRole):
+    """权限矩阵依赖工厂（第三期 1.1/H2）：要求当前角色属于 allowed（admin 恒通过）。
+
+    与 require_operator 的区别：
+    - 可按路由粒度声明角色集（如仅 operator、仅 admin）；
+    - 越权尝试写入审计日志（action=rbac_denied），供安全追溯。
+
+    用法：Depends(require_role(UserRole.OPERATOR))
+    """
+    allowed_set = set(allowed) | {UserRole.ADMIN}
+
+    def _dep(request: Request, user: User = Depends(get_current_user)) -> User:
+        if user.role in allowed_set:
+            return user
+        # 越权尝试审计（验收④）：失败不阻断 403 响应
+        try:
+            request.app.state.audit.record(
+                actor=user.username,
+                action="rbac_denied",
+                target=str(request.url.path),
+                detail=f"role={user.role.value}",
+                ip=request.client.host if request.client else "",
+            )
+        except Exception:  # pragma: no cover - 审计失败不改变响应
+            pass
+        raise HTTPException(status_code=403, detail="权限不足：当前角色无权执行该操作")
+
+    return _dep

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 def utc_iso() -> str:
@@ -160,6 +160,42 @@ class RoiRect(BaseModel):
     h: float = Field(..., gt=0.0, le=1.0)
 
 
+MASK_MARK = ":***@"  # H3：脱敏标记（user:***@host）；亦用于识别"未修改"的回传值
+
+
+def mask_source(source: str) -> str:
+    """脱敏取流地址中的密码（第三期 1.2/H3）：rtsp://user:pass@host → rtsp://user:***@host。
+
+    - 无凭据（无 userinfo）原样返回；仅用户名无密码时保留用户名；
+    - 解析失败一律退化为 "***"，绝不原样吐回可能含密码的字符串。
+    """
+    if not source:
+        return source
+    try:
+        from urllib.parse import urlparse, urlunparse
+
+        p = urlparse(source)
+        if not p.username:
+            return source
+        host = p.hostname or ""
+        if ":" in host:  # IPv6 字面量
+            host = f"[{host}]"
+        if p.port:
+            host = f"{host}:{p.port}"
+        userinfo = p.username + (":***" if p.password else "")
+        return urlunparse(p._replace(netloc=f"{userinfo}@{host}"))
+    except Exception:  # pragma: no cover - 防御性兜底
+        return "***"
+
+
+def mask_camera(info: "CameraInfo") -> "CameraInfo":
+    """返回脱敏副本（不改动内部对象）：source 替换为脱敏值，仅供 API 响应使用。
+
+    内部链路（frame_hub / inspection_engine / camera_capture）仍读原始 source 取流。
+    """
+    return info.model_copy(update={"source": mask_source(info.source)})
+
+
 class CameraInfo(BaseModel):
     id: str
     name: str
@@ -169,6 +205,12 @@ class CameraInfo(BaseModel):
     status: str = "unknown"  # online / offline / unknown
     resolution: Optional[str] = None
     roi: List[RoiRect] = []  # G6：检测区域（归一化矩形列表），空表示全画面
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def source_masked(self) -> str:
+        """脱敏地址（rtsp://user:***@host）：随序列化自动携带，前端展示专用。"""
+        return mask_source(self.source)
 
 
 class SystemHealth(BaseModel):

@@ -3,12 +3,28 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from ..auth import get_current_user
+from ..auth import get_current_user, require_role
 from ..camera_capture import build_authed_source, probe_source
 from ..config_manager import CameraConfig
-from ..models import ActiveCameraResult, CameraInfo, CameraType, RoiRect, infer_camera_type, normalize_camera_type
+from ..models import (
+    MASK_MARK,
+    ActiveCameraResult,
+    CameraInfo,
+    CameraType,
+    RoiRect,
+    User,
+    UserRole,
+    infer_camera_type,
+    mask_camera,
+    normalize_camera_type,
+)
 
 router = APIRouter(prefix="/cameras", tags=["cameras"], dependencies=[Depends(get_current_user)])
+
+# 权限矩阵（第三期 1.1/H2）：GET 只读保持登录即可；
+# 增删改/active/discover/test → operator+；删除与凭据/来源修改 → admin。
+_op_required = Depends(require_role(UserRole.OPERATOR))
+_admin_required = Depends(require_role(UserRole.ADMIN))
 
 
 class CameraCreate(BaseModel):
@@ -50,7 +66,8 @@ class CameraTest(BaseModel):
 
 @router.get("", response_model=list[CameraInfo])
 def list_cameras(request: Request):
-    return request.app.state.cam.list()
+    # H3：响应脱敏——内部清单保持原始 source 供取流，API 一律返回掩码值
+    return [mask_camera(c) for c in request.app.state.cam.list()]
 
 
 @router.get("/network/scan")
@@ -64,10 +81,10 @@ def get_camera(cam_id: str, request: Request):
     cam = request.app.state.cam.get(cam_id)
     if not cam:
         raise HTTPException(status_code=404, detail="camera not found")
-    return cam
+    return mask_camera(cam)
 
 
-@router.post("", status_code=201, response_model=CameraInfo)
+@router.post("", status_code=201, response_model=CameraInfo, dependencies=[_op_required])
 def add_camera(body: CameraCreate, request: Request):
     """添加摄像头。
 
@@ -93,13 +110,28 @@ def add_camera(body: CameraCreate, request: Request):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     info = CameraInfo(**payload)
-    info.source = cfg.source  # 响应需反映已注入的鉴权信息
+    info.source = cfg.source  # 内部保存真实取流地址
     request.app.state.cam.add(info)
-    return request.app.state.cam.get(body.id)
+    # H3：响应返回脱敏副本
+    return mask_camera(request.app.state.cam.get(body.id))
 
 
 @router.put("/{cam_id}", response_model=CameraInfo)
-def update_camera(cam_id: str, body: CameraUpdate, request: Request):
+def update_camera(cam_id: str, body: CameraUpdate, request: Request, user: User = Depends(require_role(UserRole.OPERATOR))):
+    # H3：前端会把"未修改"的 source 以脱敏值（user:***@host）回传，视为不修改，
+    # 既防止掩码值写穿配置，也让"只想改名字"的请求不被误判为改凭据。
+    if body.source is not None and MASK_MARK in body.source:
+        body.source = None
+    # 权限矩阵：source/凭据修改仅 admin（operator 改名称/启用/ROI 等仍可）
+    if (body.source is not None or body.username is not None or body.password is not None) and user.role != UserRole.ADMIN:
+        try:
+            request.app.state.audit.record(
+                actor=user.username, action="rbac_denied", target=f"/api/v1/cameras/{cam_id}",
+                detail="修改摄像头来源/凭据需要 admin", ip=request.client.host if request.client else "",
+            )
+        except Exception:  # pragma: no cover - 审计失败不改变响应
+            pass
+        raise HTTPException(status_code=403, detail="修改摄像头来源或凭据需要管理员权限")
     cam = request.app.state.cam.get(cam_id)
     if not cam:
         raise HTTPException(status_code=404, detail="camera not found")
@@ -153,10 +185,11 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request):
             hubs.invalidate(cam_id)
         except Exception:
             pass
-    return cam
+    # H3：响应返回脱敏副本（内部 cam 保持真实 source）
+    return mask_camera(cam)
 
 
-@router.delete("/{cam_id}")
+@router.delete("/{cam_id}", dependencies=[_admin_required])
 def delete_camera(cam_id: str, request: Request):
     cam = request.app.state.cam.get(cam_id)
     if not cam:
@@ -166,7 +199,7 @@ def delete_camera(cam_id: str, request: Request):
     return {"ok": True, "removed": cam_id}
 
 
-@router.post("/test")
+@router.post("/test", dependencies=[_op_required])
 def test_camera_connection(body: CameraTest, request: Request):
     """探测给定来源（可带凭据）是否可连接并取到至少一帧。
 
@@ -180,19 +213,25 @@ def test_camera_connection(body: CameraTest, request: Request):
     return {"ok": ok, "message": "连接成功，可取流" if ok else "无法连接或取不到视频帧"}
 
 
-@router.post("/discover")
-def discover_cameras(body: CameraDiscover, request: Request):
-    """扫描网段并自动注册可用的网络摄像头（探测 RTSP 取流）。"""
+@router.post("/discover", dependencies=[_op_required])
+def discover_cameras(body: CameraDiscover, request: Request, user: User = Depends(get_current_user)):
+    """扫描网段并自动注册可用的网络摄像头（探测 RTSP 取流）。
+
+    权限矩阵：发现本身 → operator+；携带凭据（写入新摄像头的账号密码）→ admin。
+    """
+    if (body.username or body.password) and user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="携带凭据的自动发现需要管理员权限")
     added = request.app.state.cam.discover_and_add(
         subnet=body.subnet,
         username=body.username,
         password=body.password,
         set_active=body.set_active,
     )
-    return {"added": [c.model_dump() for c in added], "count": len(added)}
+    # H3：响应脱敏（新注册摄像头的 source 含凭据）
+    return {"added": [mask_camera(c).model_dump() for c in added], "count": len(added)}
 
 
-@router.put("/{cam_id}/active", response_model=ActiveCameraResult)
+@router.put("/{cam_id}/active", response_model=ActiveCameraResult, dependencies=[_op_required])
 def set_active_camera(cam_id: str, request: Request):
     cam = request.app.state.cam.get(cam_id)
     if not cam:

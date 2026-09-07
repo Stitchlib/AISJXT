@@ -2,13 +2,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..auth import get_current_user
-from ..models import InspectionStartResult, InspectionStatus, InspectionStopResult
+from ..auth import get_current_user, require_role
+from ..models import InspectionStartResult, InspectionStatus, InspectionStopResult, UserRole
 
 router = APIRouter(prefix="/inspection", tags=["inspection"], dependencies=[Depends(get_current_user)])
 
+# 权限矩阵（第三期 1.1/H2）：启停检测 → operator+；/status 只读保持登录即可
+_op_required = Depends(require_role(UserRole.OPERATOR))
 
-@router.post("/start", response_model=InspectionStartResult)
+
+@router.post("/start", response_model=InspectionStartResult, dependencies=[_op_required])
 async def start(
     camera_id: Optional[str] = None,
     batch_id: Optional[str] = None,
@@ -37,7 +40,7 @@ async def start(
     }
 
 
-@router.post("/stop", response_model=InspectionStopResult)
+@router.post("/stop", response_model=InspectionStopResult, dependencies=[_op_required])
 async def stop(request: Request, camera_id: Optional[str] = None):
     """停止检测；camera_id 缺省全停（旧行为），指定则单停一摄（G5）。"""
     await request.app.state.engine.stop(camera_id)
