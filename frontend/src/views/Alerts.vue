@@ -197,6 +197,16 @@
           </el-select>
         </el-form-item>
         <el-form-item label="阈值"><el-input-number v-model="ruleForm.threshold" :step="0.1" style="width: 100%" /></el-form-item>
+        <el-form-item label="冷却(秒)">
+          <el-input-number
+            v-model="ruleForm.cooldown_seconds"
+            :min="0"
+            :max="604800"
+            :step="30"
+            style="width: 100%"
+          />
+          <div class="cooldown-tip">冷却窗口内重复命中不重复通知，仅累计次数；0=不冷却</div>
+        </el-form-item>
         <el-form-item label="作用域">
           <el-select v-model="ruleForm.scope" style="width: 100%">
             <el-option label="全部摄像头" value="all" />
@@ -344,6 +354,7 @@ function openRuleDialog(rule) {
     ruleForm.operator = rule.operator
     ruleForm.threshold = rule.threshold
     ruleForm.scope = rule.scope || 'all'
+    ruleForm.cooldown_seconds = rule.cooldown_seconds ?? 0
     ruleForm.notify_email = rule.notify_email || ''
     ruleForm.webhook_type = rule.webhook_type || ''
     ruleForm.webhook_url = rule.webhook_url || ''
@@ -374,6 +385,7 @@ async function saveRule() {
     operator: ruleForm.operator,
     threshold: ruleForm.threshold,
     scope: ruleForm.scope,
+    cooldown_seconds: ruleForm.cooldown_seconds ?? 0,
     notify_email: ruleForm.notify_email || undefined,
     webhook_type: ruleForm.webhook_type || undefined,
     webhook_url: ruleForm.webhook_url || undefined,
@@ -535,6 +547,7 @@ onMounted(() => {
 .stat-num { font-size: 24px; font-weight: 600; line-height: 1.4; }
 .stat-num.warn { color: #e6a23c; }
 .stat-label { font-size: 12px; color: #909399; }
+.cooldown-tip { font-size: 12px; color: #909399; line-height: 1.4; }
 .verdict-event { color: #606266; font-size: 13px; }
 .event-image-box { min-height: 200px; display: flex; align-items: center; justify-content: center; }
 </style>
