@@ -212,6 +212,33 @@ class Database:
         if "webhook_type" not in acols:
             conn.execute("ALTER TABLE alert_rules ADD COLUMN webhook_type TEXT")
 
+    def _mg_alert_cooling(self, conn) -> None:
+        """第三期 2.1：告警冷却与聚合。
+
+        - alert_rules 补 cooldown_seconds（默认 0=不冷却，行为与旧版完全兼容）与
+          silence_until（运营静默窗口，绝对 UTC 时间戳，之前完全跳过评估）；
+        - alert_events 补 repeat_count（冷却窗口内重复命中聚合计数）、
+          recovered/recovered_at（状态恢复标记，恢复通知依据）；
+        - 补 (rule_id, camera_id, id) 索引：冷却判定取"该规则+摄像头最新事件"与
+          恢复查询走索引，避免逐帧全表扫描。
+        """
+        rcols = {r["name"] for r in conn.execute("PRAGMA table_info(alert_rules)").fetchall()}
+        if "cooldown_seconds" not in rcols:
+            conn.execute("ALTER TABLE alert_rules ADD COLUMN cooldown_seconds INTEGER DEFAULT 0")
+        if "silence_until" not in rcols:
+            conn.execute("ALTER TABLE alert_rules ADD COLUMN silence_until TEXT")
+        ecols = {r["name"] for r in conn.execute("PRAGMA table_info(alert_events)").fetchall()}
+        if "repeat_count" not in ecols:
+            conn.execute("ALTER TABLE alert_events ADD COLUMN repeat_count INTEGER DEFAULT 0")
+        if "recovered" not in ecols:
+            conn.execute("ALTER TABLE alert_events ADD COLUMN recovered INTEGER DEFAULT 0")
+        if "recovered_at" not in ecols:
+            conn.execute("ALTER TABLE alert_events ADD COLUMN recovered_at TEXT")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_rule_cam "
+            "ON alert_events(rule_id, camera_id, id)"
+        )
+
     def _migrate(self) -> None:
         """按序执行幂等迁移并记录当前 schema 版本（G7b）。
 
@@ -233,6 +260,7 @@ class Database:
                 ("002_alert_verdict", self._mg_alert_verdict),
                 ("003_batch_id", self._mg_batch_id),
                 ("004_webhook", self._mg_webhook),
+                ("005_alert_cooling", self._mg_alert_cooling),
             ]
             for name, fn in migrations:
                 if name in applied:
@@ -647,11 +675,13 @@ class Database:
     def create_alert_rule(self, rule: dict) -> int:
         with self._conn_cm() as conn:
             cur = conn.execute(
-                "INSERT INTO alert_rules (name,metric,operator,threshold,scope,enabled,notify_email,webhook_url,webhook_type,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO alert_rules (name,metric,operator,threshold,scope,enabled,notify_email,webhook_url,webhook_type,cooldown_seconds,silence_until,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     rule["name"], rule["metric"], rule["operator"], rule["threshold"],
                     rule["scope"], int(rule.get("enabled", True)), rule.get("notify_email"),
                     rule.get("webhook_url"), rule.get("webhook_type"),
+                    max(0, int(rule.get("cooldown_seconds") or 0)),
+                    rule.get("silence_until"),
                     rule.get("created_at", utc_iso()),
                 ),
             )
@@ -669,8 +699,14 @@ class Database:
 
     def update_alert_rule(self, rid: int, **fields) -> bool:
         allowed = ["name", "metric", "operator", "threshold", "scope", "enabled", "notify_email",
-                   "webhook_url", "webhook_type"]
+                   "webhook_url", "webhook_type", "cooldown_seconds", "silence_until"]
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        # 显式传入 cooldown_seconds=0 是有效语义（关闭冷却），不能被 None 过滤吞掉
+        if fields.get("cooldown_seconds") == 0:
+            sets["cooldown_seconds"] = 0
+        # 显式传入 silence_until=None 表示清除静默窗口
+        if "silence_until" in fields and fields["silence_until"] is None:
+            sets["silence_until"] = None
         if not sets:
             return False
         if "enabled" in sets:
@@ -687,6 +723,57 @@ class Database:
             conn.execute("DELETE FROM alert_rules WHERE id=?", (rid,))
             conn.commit()
             return True
+
+    # ---------- 告警冷却与聚合（第三期 2.1） ----------
+    def get_latest_alert_event(self, rule_id: int, camera_id: str) -> dict | None:
+        """该规则+摄像头最近一次事件（冷却窗口判定与聚合目标）。"""
+        with self._conn_cm() as conn:
+            row = conn.execute(
+                "SELECT * FROM alert_events WHERE rule_id=? AND camera_id=? "
+                "ORDER BY id DESC LIMIT 1",
+                (rule_id, camera_id),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def bump_alert_event_repeat(self, alert_id: int, value: float) -> int:
+        """冷却窗口内重复命中：聚合到既有事件（repeat_count+1，刷新观测值），不新建不通知。"""
+        with self._conn_cm() as conn:
+            cur = conn.execute(
+                "UPDATE alert_events SET repeat_count=repeat_count+1, value=? WHERE id=?",
+                (value, alert_id),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    def recover_alert_events(self, rule_id: int, camera_id: str) -> int:
+        """状态恢复：关闭该规则+摄像头的全部未恢复事件（recovered=1）。
+
+        返回关闭数（0=本来就没有活动事件）。供"恢复通知"判断：仅当本帧未命中
+        且确有活动事件时才发一次恢复通知，避免逐帧空转 UPDATE 扫大表。
+        """
+        with self._conn_cm() as conn:
+            cur = conn.execute(
+                "UPDATE alert_events SET recovered=1, recovered_at=? "
+                "WHERE rule_id=? AND camera_id=? AND recovered=0",
+                (utc_iso(), rule_id, camera_id),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    def close_active_alert_events(self, rule_id: int, camera_id: str) -> int:
+        """新事件接续：同一规则+摄像头产生新事件时关闭旧活动事件（不视为恢复）。
+
+        与 recover_alert_events 的区别：本方法用于"持续告警被新事件接续"的场景，
+        旧事件关闭但不发恢复通知（条件并未恢复，只是换了一个新事件承载）。
+        """
+        with self._conn_cm() as conn:
+            cur = conn.execute(
+                "UPDATE alert_events SET recovered=1 "
+                "WHERE rule_id=? AND camera_id=? AND recovered=0",
+                (rule_id, camera_id),
+            )
+            conn.commit()
+            return cur.rowcount
 
     # ---------- 告警事件 ----------
     def insert_alert_event(self, rule_id, camera_id, message, severity, value, result_id=None) -> int:

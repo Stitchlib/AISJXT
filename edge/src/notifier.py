@@ -1,7 +1,10 @@
-"""告警与通知：规则评估 + 应用内事件 + 邮件 + 多渠道 webhook。
+"""告警与通知：规则评估 + 冷却聚合 + 应用内事件 + 邮件 + 多渠道 webhook。
 
 职责边界：
-- process_alerts：由 inspection_engine 在每次检测后调用，命中规则则落库 alert_events 并(可选)发邮件/webhook。
+- process_alerts：由 inspection_engine 在每次检测后调用。评估启用中的规则：
+  命中即落库 alert_events 并(可选)发邮件/webhook；支持冷却窗口（窗口内仅聚合
+  repeat_count，不新建事件不发送）、运营静默（silence_until 前完全跳过）、
+  状态恢复通知（条件回落到阈值内时发一次"已恢复"）。
 - send_email：SMTP 可选，未启用或失败时安全降级（仅记录日志，不影响主流程）。
 - send_webhook：HTTP POST 到钉钉/飞书/企微/通用机器人（均为标准 HTTP，无需 SDK）。
   - 慢 webhook（如企业机器人）通过 asyncio.to_thread 在引擎侧异步调用，不影响检测循环节拍；
@@ -15,6 +18,7 @@ import json
 import logging
 import urllib.request
 import urllib.error
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from typing import List, Optional, Tuple
 
@@ -48,6 +52,19 @@ def _metric_value(result: DetectionResult, metric: str) -> Optional[float]:
     if metric == "processing_time_ms":
         return result.processing_time_ms
     return None
+
+
+def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+    """解析 ISO 时间戳（utc_iso 写入，含/不含时区均可）；失败返回 None。"""
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (TypeError, ValueError):
+        return None
 
 
 def _build_webhook_payload(webhook_type: str, text: str) -> dict:
@@ -158,48 +175,113 @@ def send_email(cm: ConfigManager, to: str, subject: str, body: str) -> bool:
         return False
 
 
-def process_alerts(result: DetectionResult, db: Database, cm: ConfigManager) -> List[int]:
-    """评估启用中的告警规则，命中即记录事件（可选邮件/webhook）。返回新建事件 id 列表。"""
+def _dispatch_notifications(
+    rule: dict, alert_id: int, msg: str, result: DetectionResult,
+    db: Database, cm: ConfigManager, bus=None,
+) -> bool:
+    """按规则渠道发送一次告警通知（邮件 + webhook）。返回是否至少一个渠道成功。
+
+    bus 不为空时走异步投递（第三期 2.2，由 notification_worker 消费）；
+    为空时同步发送（兼容单测与现有行为）。
+    """
+    if bus is not None:
+        return bus.submit_alert(rule, alert_id, msg, result)
+    notified = False
+    if rule.get("notify_email"):
+        body = (
+            f"AI 视觉质检告警\n\n{msg}\n"
+            f"时间: {result.timestamp}\n仿真数据: {result.is_simulation}\n"
+            f"缺陷数: {result.defect_count}/{result.total_count}"
+        )
+        if send_email(cm, rule["notify_email"], "AI视觉质检告警", body):
+            notified = True
+    wh_url = rule.get("webhook_url")
+    if wh_url:
+        wh_type = rule.get("webhook_type") or "generic"
+        ok, _err = send_webhook(wh_url, wh_type, f"AI视觉质检告警\n{msg}")
+        if ok:
+            notified = True
+        else:
+            logger.warning("告警[%s] webhook 通知失败: %s", alert_id, _err)
+    return notified
+
+
+def _notify_recovery(
+    rule: dict, result: DetectionResult, db: Database, cm: ConfigManager, bus=None,
+) -> None:
+    """状态恢复通知：指标回落到阈值内时发一次"已恢复"（走同一组渠道，失败仅记日志）。"""
+    msg = (
+        f"规则[{rule['name']}] 摄像头[{result.camera_id}] "
+        f"{rule['metric']} 已回落到阈值内（阈值 {rule['threshold']}），告警恢复"
+    )
+    logger.info("告警恢复: %s", msg)
+    if bus is not None:
+        bus.submit_recovery(rule, msg)
+        return
+    if rule.get("notify_email"):
+        body = f"AI 视觉质检告警恢复\n\n{msg}\n时间: {result.timestamp}"
+        send_email(cm, rule["notify_email"], "AI视觉质检告警恢复", body)
+    wh_url = rule.get("webhook_url")
+    if wh_url:
+        wh_type = rule.get("webhook_type") or "generic"
+        ok, _err = send_webhook(wh_url, wh_type, f"AI视觉质检告警恢复\n{msg}")
+        if not ok:
+            logger.warning("恢复通知 webhook 发送失败: %s", _err)
+
+
+def process_alerts(result: DetectionResult, db: Database, cm: ConfigManager, bus=None) -> List[int]:
+    """评估启用中的告警规则（第三期 2.1 冷却/聚合/静默/恢复），返回新建事件 id 列表。
+
+    语义（按规则+摄像头维度独立判定）：
+    - silence_until 在未来 → 完全跳过（不评估/不建事件/不通知/不聚合/不恢复）；
+    - 本帧命中：
+      - cooldown_seconds>0 且最近事件仍在冷却窗口内 → 聚合：repeat_count+1（不新建不发送）；
+      - 否则新建事件并通知；若上一事件仍未恢复，标记为"持续告警"摘要（接续关闭旧事件）；
+    - 本帧未命中：若存在活动事件 → 关闭并（有配置渠道时）发一次恢复通知。
+    - cooldown_seconds=0：与旧版行为完全一致（每次命中都新建事件并通知）。
+    """
     created: List[int] = []
+    now = datetime.now(timezone.utc)
     rules = db.list_alert_rules()
     for r in rules:
         if not r.get("enabled"):
             continue
         if r["scope"] != "all" and r["scope"] != result.camera_id:
             continue
+        # 运营静默窗口：silence_until 之前整条规则跳过（抑制风暴期间的误报噪声）
+        silence_until = _parse_iso(r.get("silence_until"))
+        if silence_until is not None and now < silence_until:
+            continue
         value = _metric_value(result, r["metric"])
         if value is None:
             continue
         if not _compare(value, r["operator"], r["threshold"]):
+            # 状态恢复：仅当确有活动事件时才关闭并发恢复通知（避免逐帧空转）
+            if db.recover_alert_events(r["id"], result.camera_id):
+                _notify_recovery(r, result, db, cm, bus)
             continue
+        cooldown = int(r.get("cooldown_seconds") or 0)
+        latest = db.get_latest_alert_event(r["id"], result.camera_id)
+        if cooldown > 0 and latest is not None:
+            last_ts = _parse_iso(latest.get("timestamp"))
+            if last_ts is not None and (now - last_ts).total_seconds() < cooldown:
+                # 冷却窗口内：聚合到既有事件，不新建、不发通知
+                db.bump_alert_event_repeat(latest["id"], value)
+                continue
         severity = "critical" if value >= r["threshold"] * 1.5 else "warning"
         msg = (
             f"规则[{r['name']}] 摄像头[{result.camera_id}] "
             f"{r['metric']}={value:.3f} 触发阈值 {r['threshold']}"
         )
+        # 冷却结束仍持续（上一事件未恢复）→ 持续告警摘要（聚合前次重复计数）
+        if latest is not None and not latest.get("recovered"):
+            prev_repeats = int(latest.get("repeat_count") or 0)
+            msg += f"（持续告警：前次事件已重复 {prev_repeats} 次，仍未恢复）"
+            db.close_active_alert_events(r["id"], result.camera_id)
         aid = db.insert_alert_event(
             r["id"], result.camera_id, msg, severity, value, result_id=result.id
         )
         created.append(aid)
-        notified = False
-        # 邮件渠道（可选）
-        if r.get("notify_email"):
-            body = (
-                f"AI 视觉质检告警\n\n{msg}\n"
-                f"时间: {result.timestamp}\n仿真数据: {result.is_simulation}\n"
-                f"缺陷数: {result.defect_count}/{result.total_count}"
-            )
-            if send_email(cm, r["notify_email"], "AI视觉质检告警", body):
-                notified = True
-        # webhook 渠道（第二期 G3）：统一在引擎侧以 asyncio.to_thread 调用，失败重试 1 次
-        wh_url = r.get("webhook_url")
-        if wh_url:
-            wh_type = r.get("webhook_type") or "generic"
-            ok, _err = send_webhook(wh_url, wh_type, f"AI视觉质检告警\n{msg}")
-            if ok:
-                notified = True
-            else:
-                logger.warning("告警[%s] webhook 通知失败: %s", aid, _err)
-        if notified:
+        if _dispatch_notifications(r, aid, msg, result, db, cm, bus):
             db.mark_alert_notified(aid)
     return created

@@ -41,6 +41,9 @@ class AlertRuleCreate(BaseModel):
     # 多渠道通知（第二期 G3）
     webhook_url: Optional[str] = None
     webhook_type: Optional[str] = None  # generic / dingtalk / feishu / wecom
+    # 告警冷却与聚合（第三期 2.1）：0=不冷却（旧行为）；silence_until=UTC ISO 时刻，之前静默
+    cooldown_seconds: int = Field(default=0, ge=0, le=7 * 86400)
+    silence_until: Optional[str] = None
 
 
 class AlertRuleUpdate(BaseModel):
@@ -53,6 +56,8 @@ class AlertRuleUpdate(BaseModel):
     notify_email: Optional[str] = None
     webhook_url: Optional[str] = None
     webhook_type: Optional[str] = None
+    cooldown_seconds: Optional[int] = Field(default=None, ge=0, le=7 * 86400)
+    silence_until: Optional[str] = None  # 显式传 null 表示清除静默窗口
 
 
 class AlertTestResult(BaseModel):

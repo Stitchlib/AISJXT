@@ -293,7 +293,7 @@ def test_schema_migration_idempotent(tmp_path):
     path = str(tmp_path / "mig.db")
     db = Database(path)
     sv1 = db.get_schema_version()
-    assert sv1["count"] == 4, sv1
+    assert sv1["count"] == 5, sv1  # 005_alert_cooling（第三期 2.1）
     # 写一条数据
     db.insert_result({
         "timestamp": "2026-09-03T00:00:00+00:00", "camera_id": "cam1", "defects": [],
@@ -304,7 +304,7 @@ def test_schema_migration_idempotent(tmp_path):
     # 二次打开（重启）
     db2 = Database(path)
     sv2 = db2.get_schema_version()
-    assert sv2["count"] == 4, "重复启动不应新增迁移版本"
+    assert sv2["count"] == 5, "重复启动不应新增迁移版本"
     rows, total = db2.query_results(1, 10, batch_id="B1")
     assert total == 1 and rows[0]["batch_id"] == "B1"
 
@@ -342,15 +342,18 @@ def test_old_db_auto_migrates(tmp_path):
     # 用新代码打开 -> 自动迁移
     db = Database(path)
     sv = db.get_schema_version()
-    assert sv["count"] == 4, sv
+    assert sv["count"] == 5, sv
 
     # 新增列已补齐
     dcols = {r[1] for r in db._conn.execute("PRAGMA table_info(detection_results)").fetchall()}
     assert "batch_id" in dcols
     acols = {r[1] for r in db._conn.execute("PRAGMA table_info(alert_rules)").fetchall()}
     assert "webhook_url" in acols and "webhook_type" in acols
+    # 005_alert_cooling：冷却/聚合列已补齐（第三期 2.1）
+    assert {"cooldown_seconds", "silence_until"}.issubset(acols)
     ecols = {r[1] for r in db._conn.execute("PRAGMA table_info(alert_events)").fetchall()}
     assert {"verdict", "remark", "judged_by", "judged_at", "result_id"}.issubset(ecols)
+    assert {"repeat_count", "recovered", "recovered_at"}.issubset(ecols)
 
     # 旧数据无损
     rows, total = db.query_results(1, 10)

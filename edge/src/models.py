@@ -292,6 +292,9 @@ class AlertRule(BaseModel):
     # 多渠道通知（第二期 G3）：webhook 渠道 URL 与类型
     webhook_url: Optional[str] = None
     webhook_type: Optional[str] = None  # generic / dingtalk / feishu / wecom
+    # 告警冷却与聚合（第三期 2.1）：cooldown_seconds=0 表示不冷却（旧行为）
+    cooldown_seconds: int = Field(default=0, ge=0, le=7 * 86400)
+    silence_until: Optional[str] = None  # 运营静默：该 UTC 时刻前完全跳过评估
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -311,6 +314,10 @@ class AlertEvent(BaseModel):
     remark: Optional[str] = ""
     judged_by: Optional[str] = None
     judged_at: Optional[str] = None
+    # 冷却聚合（第三期 2.1）：冷却窗口内重复命中聚合计数与恢复标记
+    repeat_count: int = 0
+    recovered: bool = False
+    recovered_at: Optional[str] = None
 
 
 class AlertEventPage(BaseModel):
