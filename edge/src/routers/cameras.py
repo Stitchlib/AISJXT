@@ -10,7 +10,6 @@ from ..models import (
     MASK_MARK,
     ActiveCameraResult,
     CameraInfo,
-    CameraType,
     RoiRect,
     User,
     UserRole,
@@ -109,9 +108,7 @@ def add_camera(body: CameraCreate, request: Request):
         cm.add_camera(cfg)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    info = CameraInfo(**payload)
-    info.source = cfg.source  # 内部保存真实取流地址
-    request.app.state.cam.add(info)
+    # 3.1 单一数据源：只写 ConfigManager，视图由 CameraManager 现场物化
     # H3：响应返回脱敏副本
     return mask_camera(request.app.state.cam.get(body.id))
 
@@ -135,49 +132,41 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request, user: User 
     cam = request.app.state.cam.get(cam_id)
     if not cam:
         raise HTTPException(status_code=404, detail="camera not found")
-    if body.name is not None:
-        cam.name = body.name
-    if body.enabled is not None:
-        cam.enabled = body.enabled
-    if body.status is not None:
-        cam.status = body.status
-    if body.type is not None:
-        # 允许纠正历史脏类型（如把误设的 simulated 改回 rtsp 以真正取流）
-        cam.type = CameraType(normalize_camera_type(body.type))
-    if body.roi is not None:
-        # G6：None=不修改，[]=清空恢复全画面
-        cam.roi = body.roi
     cm = request.app.state.cm
+    # 3.1 单一数据源：只改配置条目并落盘，内存视图由 CameraManager 物化，不再双写
+    updated = False
     for c in cm.get().cameras:
-        if c.id == cam_id:
-            if body.name is not None:
-                c.name = body.name
-            if body.enabled is not None:
-                c.enabled = body.enabled
-            if body.status is not None:
-                c.status = body.status
-            if body.type is not None:
-                c.type = normalize_camera_type(body.type)
-            if body.roi is not None:
-                c.roi = body.roi
-            # 凭据/来源更新：重新注入鉴权信息
-            if body.source is not None or body.username is not None or body.password is not None:
-                new_source = body.source if body.source is not None else c.source
-                new_user = body.username if body.username is not None else c.username
-                new_pass = body.password if body.password is not None else c.password
-                if new_user and new_source.lower().startswith(("rtsp", "http")):
-                    c.source = build_authed_source(new_source, new_user, new_pass)
-                else:
-                    c.source = new_source
-                c.username = new_user
-                c.password = new_pass
-                # 未显式指定类型时，按新来源纠正类型，避免"改了 RTSP 地址仍按仿真处理"
-                if body.type is None and body.source is not None:
-                    inferred = infer_camera_type(new_source)
-                    c.type = inferred
-                    cam.type = CameraType(inferred)
-                cam.source = c.source
-    cm.save()
+        if c.id != cam_id:
+            continue
+        updated = True
+        if body.name is not None:
+            c.name = body.name
+        if body.enabled is not None:
+            c.enabled = body.enabled
+        if body.status is not None:
+            c.status = body.status
+        if body.type is not None:
+            # 允许纠正历史脏类型（如把误设的 simulated 改回 rtsp 以真正取流）
+            c.type = normalize_camera_type(body.type)
+        if body.roi is not None:
+            # G6：None=不修改，[]=清空恢复全画面
+            c.roi = body.roi
+        # 凭据/来源更新：重新注入鉴权信息
+        if body.source is not None or body.username is not None or body.password is not None:
+            new_source = body.source if body.source is not None else c.source
+            new_user = body.username if body.username is not None else c.username
+            new_pass = body.password if body.password is not None else c.password
+            if new_user and new_source.lower().startswith(("rtsp", "http")):
+                c.source = build_authed_source(new_source, new_user, new_pass)
+            else:
+                c.source = new_source
+            c.username = new_user
+            c.password = new_pass
+            # 未显式指定类型时，按新来源纠正类型，避免"改了 RTSP 地址仍按仿真处理"
+            if body.type is None and body.source is not None:
+                c.type = infer_camera_type(new_source)
+    if updated:
+        cm.save()
     # 来源/凭据/类型变了，旧的采集连接必须作废，下次观看重新按新配置开流
     hubs = getattr(request.app.state, "hubs", None)
     if hubs is not None:
@@ -185,8 +174,8 @@ def update_camera(cam_id: str, body: CameraUpdate, request: Request, user: User 
             hubs.invalidate(cam_id)
         except Exception:
             pass
-    # H3：响应返回脱敏副本（内部 cam 保持真实 source）
-    return mask_camera(cam)
+    # H3：响应返回脱敏副本（物化视图保持真实 source）
+    return mask_camera(request.app.state.cam.get(cam_id))
 
 
 @router.delete("/{cam_id}", dependencies=[_admin_required])
@@ -194,7 +183,7 @@ def delete_camera(cam_id: str, request: Request):
     cam = request.app.state.cam.get(cam_id)
     if not cam:
         raise HTTPException(status_code=404, detail="camera not found")
-    request.app.state.cam.remove(cam_id)
+    # 3.1 单一数据源：删除配置条目即完成（视图随配置派生），并联动清理 active 指针
     request.app.state.cm.remove_camera(cam_id)
     return {"ok": True, "removed": cam_id}
 
@@ -240,5 +229,6 @@ def set_active_camera(cam_id: str, request: Request):
         request.app.state.cm.set_active_camera(cam_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    cam.status = "online"
+    # 3.1 单一数据源：状态写入配置（落盘），视图物化后 GET 可见 online
+    request.app.state.cam.update_status(cam_id, "online")
     return {"ok": True, "active_camera_id": cam_id}

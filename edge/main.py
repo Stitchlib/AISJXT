@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
     cm = ConfigManager()
     db = Database(cm.get().db_path)
     ws = ConnectionManager()
-    cam = CameraManager()
+    cam = CameraManager(cm)  # 3.1 单一数据源：摄像头清单派生自 ConfigManager
     # 共享帧总线：一台摄像头只开一路采集，视频流与检测引擎共用同一路帧
     hubs = HubRegistry(fps=cm.get().stream_fps, linger=cm.get().stream_linger_seconds)
     # 缺陷图片留存（第二期 G1）：engine 与媒体端点共用同一个 ImageStore 实例
