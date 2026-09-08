@@ -28,6 +28,7 @@ from src.frame_hub import HubRegistry
 from src.image_store import ImageStore
 from src.inspection_engine import InspectionEngine
 from src.models import UserRole
+from src.notifier import NotificationBus
 from src.routers import (
     alerts,
     audit,
@@ -66,7 +67,10 @@ async def lifespan(app: FastAPI):
     hubs = HubRegistry(fps=cm.get().stream_fps, linger=cm.get().stream_linger_seconds)
     # 缺陷图片留存（第二期 G1）：engine 与媒体端点共用同一个 ImageStore 实例
     images = ImageStore.from_config(cm.get(), db)
-    engine = InspectionEngine(cm, db, ws, cam, hubs, images=images)
+    # 通知总线（第三期 2.2）：告警只投递，worker 异步发送；关停时 drain
+    bus = NotificationBus(db, cm)
+    bus.start()
+    engine = InspectionEngine(cm, db, ws, cam, hubs, images=images, bus=bus)
     auth_svc = AuthService(db, cm)
 
     # 后台预热检测器：首次 YOLO 推理有约数秒的 predictor 初始化开销，
@@ -150,6 +154,11 @@ async def lifespan(app: FastAPI):
     if bt is not None:
         bt.cancel()
     await engine.stop()
+    # 通知总线优雅关停：等待队列清空（drain），已受理通知不丢（第三期 2.2）
+    try:
+        app.state._bus_stopped = bus.stop()
+    except Exception as e:  # pragma: no cover - 关停失败不影响退出
+        logger.warning("通知总线关停异常: %s", e)
     # 退出前必须释放所有摄像头，否则设备句柄/RTSP 连接会被残留占用
     hubs.shutdown_all()
 

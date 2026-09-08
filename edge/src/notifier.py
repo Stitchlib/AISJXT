@@ -16,6 +16,8 @@ import hashlib
 import hmac
 import json
 import logging
+import queue
+import threading
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -177,15 +179,13 @@ def send_email(cm: ConfigManager, to: str, subject: str, body: str) -> bool:
 
 def _dispatch_notifications(
     rule: dict, alert_id: int, msg: str, result: DetectionResult,
-    db: Database, cm: ConfigManager, bus=None,
+    db: Database, cm: ConfigManager,
 ) -> bool:
-    """按规则渠道发送一次告警通知（邮件 + webhook）。返回是否至少一个渠道成功。
+    """同步发送一次告警通知（邮件 + webhook）。返回是否至少一个渠道成功。
 
-    bus 不为空时走异步投递（第三期 2.2，由 notification_worker 消费）；
-    为空时同步发送（兼容单测与现有行为）。
+    仅在未接入 NotificationBus 时使用（单测/降级路径）；接入后由
+    notification_worker 异步发送并在成功时自行 mark_alert_notified。
     """
-    if bus is not None:
-        return bus.submit_alert(rule, alert_id, msg, result)
     notified = False
     if rule.get("notify_email"):
         body = (
@@ -204,6 +204,118 @@ def _dispatch_notifications(
         else:
             logger.warning("告警[%s] webhook 通知失败: %s", alert_id, _err)
     return notified
+
+
+class NotificationBus:
+    """有界异步通知队列 + 独立 worker 线程（第三期 2.2）。
+
+    设计要点：
+    - 检测循环只投递（put_nowait，微秒级），慢/挂的外部通知服务绝不拖慢检测节拍；
+    - 队列有界（默认 1000）：满则丢弃并记日志（宁丢通知不瘫主链路）；
+    - worker 独立线程：发送成功才 mark_alert_notified（异步下 notified 语义 = 已送达）；
+    - stop() 优雅关停：投递哨兵等待队列清空（drain），已受理通知不丢。
+    """
+
+    def __init__(self, db: Database, cm: ConfigManager, maxsize: int = 1000, drain_timeout: float = 30.0):
+        self._db = db
+        self._cm = cm
+        self._maxsize = maxsize
+        self._drain_timeout = drain_timeout
+        self._q: "queue.Queue" = queue.Queue(maxsize=maxsize)
+        self._worker: Optional[threading.Thread] = None
+        self._sentinel = object()  # 关停哨兵：排在全部待发项之后，保证 drain
+
+    # ---------- 投递（检测循环/告警评估侧调用，非阻塞） ----------
+    def submit_alert(self, rule: dict, alert_id: int, msg: str, result: DetectionResult) -> bool:
+        """投递一条告警通知；队列满返回 False（丢弃并记日志）。"""
+        return self._put(("alert", rule, alert_id, msg, result), alert_id=alert_id)
+
+    def submit_recovery(self, rule: dict, msg: str) -> bool:
+        """投递一条恢复通知。"""
+        return self._put(("recovery", rule, None, msg, None))
+
+    def _put(self, item: tuple, alert_id=None) -> bool:
+        try:
+            self._q.put_nowait(item)
+            return True
+        except queue.Full:
+            logger.warning("通知队列已满(%d)，丢弃通知(告警=%s)以保护检测主链路", self._maxsize, alert_id)
+            return False
+
+    # ---------- 生命周期 ----------
+    def start(self) -> None:
+        if self._worker is None or not self._worker.is_alive():
+            self._worker = threading.Thread(
+                target=self._run, name="notification-worker", daemon=True
+            )
+            self._worker.start()
+            logger.info("通知 worker 已启动（队列上限 %d）", self._maxsize)
+
+    def stop(self, timeout: Optional[float] = None) -> bool:
+        """优雅关停：哨兵入队（排在本轮全部待发项之后）并等待清空。
+
+        返回是否在超时前排空。worker 为 daemon：即便超时也不阻塞进程退出，
+        未发完的通知随进程终止（日志已留痕）。
+        """
+        w = self._worker
+        if w is None or not w.is_alive():
+            return True
+        self._q.put(self._sentinel)
+        w.join(timeout if timeout is not None else self._drain_timeout)
+        drained = not w.is_alive()
+        self._worker = None
+        logger.info("通知 worker 已停止（drain=%s）", drained)
+        return drained
+
+    # ---------- worker 主循环 ----------
+    def _run(self) -> None:
+        while True:
+            item = self._q.get()
+            try:
+                if item is self._sentinel:
+                    return
+                try:
+                    self._handle(item)
+                except Exception as e:  # 单条发送失败绝不拖垮 worker
+                    logger.warning("通知发送异常（已隔离）: %s", e)
+            finally:
+                self._q.task_done()
+
+    def _handle(self, item: tuple) -> None:
+        kind, rule, alert_id, msg, result = item
+        if kind == "alert":
+            notified = False
+            if rule.get("notify_email"):
+                body = (
+                    f"AI 视觉质检告警\n\n{msg}\n"
+                    f"时间: {result.timestamp}\n仿真数据: {result.is_simulation}\n"
+                    f"缺陷数: {result.defect_count}/{result.total_count}"
+                )
+                if send_email(self._cm, rule["notify_email"], "AI视觉质检告警", body):
+                    notified = True
+            wh_url = rule.get("webhook_url")
+            if wh_url:
+                wh_type = rule.get("webhook_type") or "generic"
+                ok, err = send_webhook(wh_url, wh_type, f"AI视觉质检告警\n{msg}")
+                if ok:
+                    notified = True
+                else:
+                    logger.warning("告警[%s] webhook 通知失败（异步）: %s", alert_id, err)
+            # 发送成功才标记 notified=1；失败保持 0（未通知），不重试轰炸
+            if notified:
+                self._db.mark_alert_notified(alert_id)
+        elif kind == "recovery":
+            if rule.get("notify_email"):
+                send_email(
+                    self._cm, rule["notify_email"], "AI视觉质检告警恢复",
+                    f"AI 视觉质检告警恢复\n\n{msg}",
+                )
+            wh_url = rule.get("webhook_url")
+            if wh_url:
+                wh_type = rule.get("webhook_type") or "generic"
+                ok, err = send_webhook(wh_url, wh_type, f"AI视觉质检告警恢复\n{msg}")
+                if not ok:
+                    logger.warning("恢复通知 webhook 发送失败（异步）: %s", err)
 
 
 def _notify_recovery(
@@ -282,6 +394,9 @@ def process_alerts(result: DetectionResult, db: Database, cm: ConfigManager, bus
             r["id"], result.camera_id, msg, severity, value, result_id=result.id
         )
         created.append(aid)
-        if _dispatch_notifications(r, aid, msg, result, db, cm, bus):
+        if bus is not None:
+            # 异步化（第三期 2.2）：只投递不等待；worker 发送成功后自行标记 notified
+            bus.submit_alert(r, aid, msg, result)
+        elif _dispatch_notifications(r, aid, msg, result, db, cm):
             db.mark_alert_notified(aid)
     return created

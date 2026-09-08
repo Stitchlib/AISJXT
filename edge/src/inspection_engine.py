@@ -49,11 +49,14 @@ class InspectionEngine:
         cam: CameraManager,
         hubs=None,
         images: Optional[ImageStore] = None,
+        bus=None,
     ) -> None:
         self._cm = config_mgr
         self._db = db
         self._ws = ws
         self._cam = cam
+        # 通知总线（第三期 2.2）：告警评估只投递不等待，慢通知绝不拖慢检测节拍
+        self._bus = bus
         # 共享帧总线注册表（HubRegistry）。检测引擎不再自行打开摄像头，
         # 而是与视频流共用同一路帧——既避免设备抢占，也让检测框能叠到用户看到的那一帧上。
         self._hubs = hubs
@@ -290,10 +293,13 @@ class InspectionEngine:
                         logger.debug("标注回写失败: %s", e)
                 await self._ws.broadcast({"type": "detection_result", "data": result.model_dump()})
                 self._latency_samples.append(result.processing_time_ms)
-                # 告警规则评估（落库 + 可选邮件/webhook）。整个评估（含同步发送）放入
-                # 工作线程，避免慢速外部服务阻塞事件循环（M1 告警链路异步化）。
+                # 告警规则评估（落库 + 投递通知）。整个评估放入工作线程；
+                # 通知发送经 NotificationBus 异步化（第三期 2.2）：
+                # 有 bus 时仅入队（慢 webhook 不占线程），无 bus 时该线程内同步发送。
                 try:
-                    alert_ids = await asyncio.to_thread(process_alerts, result, self._db, self._cm)
+                    alert_ids = await asyncio.to_thread(
+                        process_alerts, result, self._db, self._cm, self._bus
+                    )
                     if alert_ids:
                         await self._ws.broadcast(
                             {"type": "alert", "data": {"ids": alert_ids, "camera_id": result.camera_id}}
