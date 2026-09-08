@@ -325,7 +325,10 @@ async def ws_endpoint(websocket: WebSocket):
     # 鉴权失败直接关闭连接（code 4401），避免未授权控制检测引擎或窃取数据。
     # 握手（accept）由 ConnectionManager.connect 统一完成，避免重复 accept。
     auth = app.state.auth
-    await app.state.ws.connect(websocket)
+    # 订阅过滤（第三期 2.3）：?subscribe=cam_a,cam_b 只收这两路 detection_result；
+    # 缺省=全量订阅（向后兼容，行为与旧版一致）。
+    subscribe = websocket.query_params.get("subscribe")
+    await app.state.ws.connect(websocket, subscribe=subscribe)
     user = None
     ticket = websocket.query_params.get("ticket")
     if ticket:
