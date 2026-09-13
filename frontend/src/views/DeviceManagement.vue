@@ -3,13 +3,38 @@
     <div class="head">
       <h2>设备管理</h2>
       <div class="controls">
-        <el-button type="primary" @click="scan" :loading="scanning">扫描网络摄像头</el-button>
-        <el-button v-if="canOperate" type="warning" @click="discoverDialog = true" :loading="discovering">发现并自动添加</el-button>
-        <el-button v-if="canOperate" type="success" @click="addDialog = true">+ 添加设备</el-button>
+        <el-button
+          type="primary"
+          :loading="scanning"
+          @click="scan"
+        >
+          扫描网络摄像头
+        </el-button>
+        <el-button
+          v-if="canOperate"
+          type="warning"
+          :loading="discovering"
+          @click="discoverDialog = true"
+        >
+          发现并自动添加
+        </el-button>
+        <el-button
+          v-if="canOperate"
+          type="success"
+          @click="addDialog = true"
+        >
+          + 添加设备
+        </el-button>
       </div>
     </div>
 
-    <el-alert v-if="error" type="error" :closable="false" :title="error" style="margin-bottom: 12px" />
+    <el-alert
+      v-if="error"
+      type="error"
+      :closable="false"
+      :title="error"
+      style="margin-bottom: 12px"
+    />
 
     <el-alert
       v-if="scanResult !== null"
@@ -56,9 +81,17 @@
       @save="saveEdit"
     />
 
-    <PreviewDialog v-model="previewDialog" :camera-id="previewId" />
+    <PreviewDialog
+      v-model="previewDialog"
+      :camera-id="previewId"
+    />
 
-    <RoiEditorDialog v-model="roiDialog" :camera="roiRow" :saving="roiSaving" @save="saveRoi" />
+    <RoiEditorDialog
+      v-model="roiDialog"
+      :camera="roiRow"
+      :saving="roiSaving"
+      @save="saveRoi"
+    />
   </div>
 </template>
 

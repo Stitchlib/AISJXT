@@ -11,35 +11,116 @@
 
     <el-tabs v-model="activeTab">
       <!-- 用户列表 -->
-      <el-tab-pane label="用户列表" name="users">
-        <el-card v-loading="loading" shadow="hover">
+      <el-tab-pane
+        label="用户列表"
+        name="users"
+      >
+        <el-card
+          v-loading="loading"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-head">
               <b>系统用户</b>
-              <el-button v-if="isAdmin" type="primary" size="small" @click="openDialog()">+ 新建用户</el-button>
+              <el-button
+                v-if="isAdmin"
+                type="primary"
+                size="small"
+                @click="openDialog()"
+              >
+                + 新建用户
+              </el-button>
             </div>
           </template>
-          <el-empty v-if="!loading && users.length === 0" description="暂无用户" />
-          <el-table v-else :data="users" border size="small">
-            <el-table-column prop="username" label="用户名" min-width="140" />
-            <el-table-column prop="display_name" label="显示名" min-width="140" />
-            <el-table-column label="角色" width="120" align="center">
+          <el-empty
+            v-if="!loading && users.length === 0"
+            description="暂无用户"
+          />
+          <el-table
+            v-else
+            :data="users"
+            border
+            size="small"
+          >
+            <el-table-column
+              prop="username"
+              label="用户名"
+              min-width="140"
+            />
+            <el-table-column
+              prop="display_name"
+              label="显示名"
+              min-width="140"
+            />
+            <el-table-column
+              label="角色"
+              width="120"
+              align="center"
+            >
               <template #default="{ row }">
-                <el-tag :type="roleTag(row.role)" size="small">{{ roleText(row.role) }}</el-tag>
+                <el-tag
+                  :type="roleTag(row.role)"
+                  size="small"
+                >
+                  {{ roleText(row.role) }}
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="100" align="center">
+            <el-table-column
+              label="状态"
+              width="100"
+              align="center"
+            >
               <template #default="{ row }">
-                <el-tag v-if="!row.disabled" type="success" size="small">启用</el-tag>
-                <el-tag v-else type="info" size="small">禁用</el-tag>
+                <el-tag
+                  v-if="!row.disabled"
+                  type="success"
+                  size="small"
+                >
+                  启用
+                </el-tag>
+                <el-tag
+                  v-else
+                  type="info"
+                  size="small"
+                >
+                  禁用
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" min-width="200" show-overflow-tooltip />
-            <el-table-column v-if="isAdmin" label="操作" width="250" fixed="right">
+            <el-table-column
+              prop="created_at"
+              label="创建时间"
+              min-width="200"
+              show-overflow-tooltip
+            />
+            <el-table-column
+              v-if="isAdmin"
+              label="操作"
+              width="250"
+              fixed="right"
+            >
               <template #default="{ row }">
-                <el-button size="small" @click="openDialog(row)">编辑</el-button>
-                <el-button size="small" type="warning" @click="openPwd(row)">改密</el-button>
-                <el-button type="danger" size="small" @click="remove(row)">删除</el-button>
+                <el-button
+                  size="small"
+                  @click="openDialog(row)"
+                >
+                  编辑
+                </el-button>
+                <el-button
+                  size="small"
+                  type="warning"
+                  @click="openPwd(row)"
+                >
+                  改密
+                </el-button>
+                <el-button
+                  type="danger"
+                  size="small"
+                  @click="remove(row)"
+                >
+                  删除
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -47,57 +128,165 @@
       </el-tab-pane>
 
       <!-- 审计日志（L3） -->
-      <el-tab-pane v-if="isAdmin" label="审计日志" name="audit">
-        <el-card v-loading="auditLoading" shadow="hover">
+      <el-tab-pane
+        v-if="isAdmin"
+        label="审计日志"
+        name="audit"
+      >
+        <el-card
+          v-loading="auditLoading"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-head">
               <b>管理操作审计流水</b>
-              <el-button size="small" @click="loadAudit">刷新</el-button>
+              <el-button
+                size="small"
+                @click="loadAudit"
+              >
+                刷新
+              </el-button>
             </div>
           </template>
-          <el-empty v-if="!auditLoading && auditItems.length === 0" description="暂无审计记录" />
-          <el-table v-else :data="auditItems" border size="small">
-            <el-table-column prop="timestamp" label="时间" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="actor" label="操作人" width="140" />
-            <el-table-column prop="action" label="动作" width="180" show-overflow-tooltip />
-            <el-table-column prop="target" label="对象" width="140" show-overflow-tooltip />
-            <el-table-column prop="detail" label="详情" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="ip" label="来源 IP" width="140" />
+          <el-empty
+            v-if="!auditLoading && auditItems.length === 0"
+            description="暂无审计记录"
+          />
+          <el-table
+            v-else
+            :data="auditItems"
+            border
+            size="small"
+          >
+            <el-table-column
+              prop="timestamp"
+              label="时间"
+              min-width="200"
+              show-overflow-tooltip
+            />
+            <el-table-column
+              prop="actor"
+              label="操作人"
+              width="140"
+            />
+            <el-table-column
+              prop="action"
+              label="动作"
+              width="180"
+              show-overflow-tooltip
+            />
+            <el-table-column
+              prop="target"
+              label="对象"
+              width="140"
+              show-overflow-tooltip
+            />
+            <el-table-column
+              prop="detail"
+              label="详情"
+              min-width="200"
+              show-overflow-tooltip
+            />
+            <el-table-column
+              prop="ip"
+              label="来源 IP"
+              width="140"
+            />
           </el-table>
         </el-card>
       </el-tab-pane>
     </el-tabs>
 
     <!-- 新建/编辑用户 -->
-    <el-dialog v-model="dialog" :title="editing ? '编辑用户' : '新建用户'" width="440px">
-      <el-form :model="form" label-width="90px">
+    <el-dialog
+      v-model="dialog"
+      :title="editing ? '编辑用户' : '新建用户'"
+      width="440px"
+    >
+      <el-form
+        :model="form"
+        label-width="90px"
+      >
         <el-form-item label="用户名">
-          <el-input v-model="form.username" :disabled="!!editing" placeholder="登录账号，不可修改" />
+          <el-input
+            v-model="form.username"
+            :disabled="!!editing"
+            placeholder="登录账号，不可修改"
+          />
         </el-form-item>
-        <el-form-item label="显示名"><el-input v-model="form.display_name" placeholder="可选" /></el-form-item>
+        <el-form-item label="显示名">
+          <el-input
+            v-model="form.display_name"
+            placeholder="可选"
+          />
+        </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="form.role" style="width: 100%">
-            <el-option label="管理员" value="admin" />
-            <el-option label="操作员" value="operator" />
-            <el-option label="访客" value="viewer" />
+          <el-select
+            v-model="form.role"
+            style="width: 100%"
+          >
+            <el-option
+              label="管理员"
+              value="admin"
+            />
+            <el-option
+              label="操作员"
+              value="operator"
+            />
+            <el-option
+              label="访客"
+              value="viewer"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="!editing" label="密码">
-          <el-input v-model="form.password" type="password" show-password placeholder="登录密码" />
+        <el-form-item
+          v-if="!editing"
+          label="密码"
+        >
+          <el-input
+            v-model="form.password"
+            type="password"
+            show-password
+            placeholder="登录密码"
+          />
         </el-form-item>
-        <el-form-item v-else label="启用">
-          <el-switch v-model="form.disabled" :active-value="false" :inactive-value="true" active-text="启用" inactive-text="禁用" />
+        <el-form-item
+          v-else
+          label="启用"
+        >
+          <el-switch
+            v-model="form.disabled"
+            :active-value="false"
+            :inactive-value="true"
+            active-text="启用"
+            inactive-text="禁用"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <el-button @click="dialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="save"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 修改密码（M6） -->
-    <el-dialog v-model="pwdDialog" title="修改密码" width="420px">
-      <el-form :model="pwdForm" label-width="96px">
+    <el-dialog
+      v-model="pwdDialog"
+      title="修改密码"
+      width="420px"
+    >
+      <el-form
+        :model="pwdForm"
+        label-width="96px"
+      >
         <el-alert
           v-if="pwdTarget && pwdTarget.username === store.user?.username"
           type="info"
@@ -105,19 +294,45 @@
           title="正在修改本人密码，需先验证当前密码。"
           style="margin-bottom: 12px"
         />
-        <el-form-item v-if="pwdSelf" label="当前密码">
-          <el-input v-model="pwdForm.old_password" type="password" show-password placeholder="当前登录密码" />
+        <el-form-item
+          v-if="pwdSelf"
+          label="当前密码"
+        >
+          <el-input
+            v-model="pwdForm.old_password"
+            type="password"
+            show-password
+            placeholder="当前登录密码"
+          />
         </el-form-item>
         <el-form-item label="新密码">
-          <el-input v-model="pwdForm.new_password" type="password" show-password placeholder="至少 6 位" />
+          <el-input
+            v-model="pwdForm.new_password"
+            type="password"
+            show-password
+            placeholder="至少 6 位"
+          />
         </el-form-item>
         <el-form-item label="确认新密码">
-          <el-input v-model="pwdForm.confirm" type="password" show-password placeholder="再次输入新密码" />
+          <el-input
+            v-model="pwdForm.confirm"
+            type="password"
+            show-password
+            placeholder="再次输入新密码"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="pwdDialog = false">取消</el-button>
-        <el-button type="primary" :loading="pwdSaving" @click="savePwd">确定</el-button>
+        <el-button @click="pwdDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="pwdSaving"
+          @click="savePwd"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

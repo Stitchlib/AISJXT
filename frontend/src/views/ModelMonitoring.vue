@@ -3,43 +3,121 @@
     <div class="head">
       <h2>模型监控</h2>
       <div class="ops">
-        <el-button :loading="exportingSamples" @click="exportSamples">导出训练样本</el-button>
-        <span v-if="activeId" class="active-tip">当前激活模型：<b>{{ activeName }}</b></span>
+        <el-button
+          :loading="exportingSamples"
+          @click="exportSamples"
+        >
+          导出训练样本
+        </el-button>
+        <span
+          v-if="activeId"
+          class="active-tip"
+        >当前激活模型：<b>{{ activeName }}</b></span>
       </div>
     </div>
 
-    <el-card v-loading="loading" shadow="hover" style="margin-bottom: 16px">
-      <template #header><b>模型版本列表</b></template>
-      <el-empty v-if="!loading && list.length === 0" description="暂无模型版本" />
-      <el-table v-else :data="list" border>
-        <el-table-column prop="name" label="名称" min-width="120" />
-        <el-table-column prop="version" label="版本" width="100" />
-        <el-table-column prop="metric" label="评估指标" width="120" />
-        <el-table-column prop="description" label="描述" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="状态" width="90" align="center">
+    <el-card
+      v-loading="loading"
+      shadow="hover"
+      style="margin-bottom: 16px"
+    >
+      <template #header>
+        <b>模型版本列表</b>
+      </template>
+      <el-empty
+        v-if="!loading && list.length === 0"
+        description="暂无模型版本"
+      />
+      <el-table
+        v-else
+        :data="list"
+        border
+      >
+        <el-table-column
+          prop="name"
+          label="名称"
+          min-width="120"
+        />
+        <el-table-column
+          prop="version"
+          label="版本"
+          width="100"
+        />
+        <el-table-column
+          prop="metric"
+          label="评估指标"
+          width="120"
+        />
+        <el-table-column
+          prop="description"
+          label="描述"
+          min-width="160"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="created_at"
+          label="创建时间"
+          width="180"
+        />
+        <el-table-column
+          label="状态"
+          width="90"
+          align="center"
+        >
           <template #default="{ row }">
-            <el-tag v-if="row.active || row.id === activeId" type="success" size="small">已激活</el-tag>
-            <el-tag v-else type="info" size="small">未激活</el-tag>
+            <el-tag
+              v-if="row.active || row.id === activeId"
+              type="success"
+              size="small"
+            >
+              已激活
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+            >
+              未激活
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column
+          label="操作"
+          width="180"
+          fixed="right"
+        >
           <template #default="{ row }">
             <el-button
               type="primary"
               size="small"
               :disabled="row.active || row.id === activeId"
               @click="activate(row)"
-            >激活</el-button>
-            <el-button type="danger" size="small" @click="remove(row)">删除</el-button>
+            >
+              激活
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="remove(row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <el-card v-loading="uploading" shadow="hover">
-      <template #header><b>上传新模型</b></template>
-      <el-form :model="uploadForm" label-width="100px">
+    <el-card
+      v-loading="uploading"
+      shadow="hover"
+    >
+      <template #header>
+        <b>上传新模型</b>
+      </template>
+      <el-form
+        :model="uploadForm"
+        label-width="100px"
+      >
         <el-form-item label="模型文件">
           <el-upload
             :auto-upload="false"
@@ -50,20 +128,39 @@
             @remove="onFileRemove"
           >
             <el-button>选择文件</el-button>
-            <template #tip><div class="tip">支持 .pt / .onnx / .pth / .weights</div></template>
+            <template #tip>
+              <div class="tip">
+                支持 .pt / .onnx / .pth / .weights
+              </div>
+            </template>
           </el-upload>
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="名称"><el-input v-model="uploadForm.name" placeholder="如 YOLOv8n" /></el-form-item>
+            <el-form-item label="名称">
+              <el-input
+                v-model="uploadForm.name"
+                placeholder="如 YOLOv8n"
+              />
+            </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="版本"><el-input v-model="uploadForm.version" placeholder="如 v1.0.0" /></el-form-item>
+            <el-form-item label="版本">
+              <el-input
+                v-model="uploadForm.version"
+                placeholder="如 v1.0.0"
+              />
+            </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="评估指标"><el-input v-model="uploadForm.metric" placeholder="如 mAP 0.92" /></el-form-item>
+            <el-form-item label="评估指标">
+              <el-input
+                v-model="uploadForm.metric"
+                placeholder="如 mAP 0.92"
+              />
+            </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="上传后激活">
@@ -71,9 +168,21 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="描述"><el-input v-model="uploadForm.description" type="textarea" :rows="2" /></el-form-item>
+        <el-form-item label="描述">
+          <el-input
+            v-model="uploadForm.description"
+            type="textarea"
+            :rows="2"
+          />
+        </el-form-item>
         <el-form-item>
-          <el-button type="primary" :disabled="!selectedFile" @click="upload">上传</el-button>
+          <el-button
+            type="primary"
+            :disabled="!selectedFile"
+            @click="upload"
+          >
+            上传
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>

@@ -2,21 +2,48 @@
   <div>
     <div class="head">
       <h2>系统配置</h2>
-      <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>
+      <el-button
+        type="primary"
+        :loading="saving"
+        @click="save"
+      >
+        保存配置
+      </el-button>
     </div>
 
-    <el-card v-loading="loading" shadow="hover" style="margin-bottom: 16px">
-      <el-form :model="form" label-width="160px">
-        <el-divider content-position="left">检测参数</el-divider>
+    <el-card
+      v-loading="loading"
+      shadow="hover"
+      style="margin-bottom: 16px"
+    >
+      <el-form
+        :model="form"
+        label-width="160px"
+      >
+        <el-divider content-position="left">
+          检测参数
+        </el-divider>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="置信度阈值">
-              <el-input-number v-model="form.confidence_threshold" :min="0" :max="1" :step="0.01" style="width: 100%" />
+              <el-input-number
+                v-model="form.confidence_threshold"
+                :min="0"
+                :max="1"
+                :step="0.01"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="IOU 阈值">
-              <el-input-number v-model="form.iou_threshold" :min="0" :max="1" :step="0.01" style="width: 100%" />
+              <el-input-number
+                v-model="form.iou_threshold"
+                :min="0"
+                :max="1"
+                :step="0.01"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -28,59 +55,118 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="推送间隔(帧)">
-              <el-input-number v-model="form.push_interval_frames" :min="1" :step="1" style="width: 100%" />
+              <el-input-number
+                v-model="form.push_interval_frames"
+                :min="1"
+                :step="1"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="模型路径">
-          <el-input v-model="form.model_path" placeholder="如 models/best.pt" />
+          <el-input
+            v-model="form.model_path"
+            placeholder="如 models/best.pt"
+          />
         </el-form-item>
 
-        <el-divider content-position="left">缺陷图片留存</el-divider>
+        <el-divider content-position="left">
+          缺陷图片留存
+        </el-divider>
         <el-row :gutter="16">
           <el-col :span="8">
             <el-form-item label="保存模式">
-              <el-select v-model="form.save_image_mode" style="width: 100%">
-                <el-option label="仅缺陷帧" value="defect_only" />
-                <el-option label="全部帧" value="all" />
-                <el-option label="抽样（1/10）" value="sample" />
-                <el-option label="不保存" value="none" />
+              <el-select
+                v-model="form.save_image_mode"
+                style="width: 100%"
+              >
+                <el-option
+                  label="仅缺陷帧"
+                  value="defect_only"
+                />
+                <el-option
+                  label="全部帧"
+                  value="all"
+                />
+                <el-option
+                  label="抽样（1/10）"
+                  value="sample"
+                />
+                <el-option
+                  label="不保存"
+                  value="none"
+                />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="磁盘配额(GB)">
-              <el-input-number v-model="form.image_quota_gb" :min="0.1" :step="0.5" style="width: 100%" />
+              <el-input-number
+                v-model="form.image_quota_gb"
+                :min="0.1"
+                :step="0.5"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="保留天数">
-              <el-input-number v-model="form.image_retention_days" :min="1" :step="1" style="width: 100%" />
+              <el-input-number
+                v-model="form.image_retention_days"
+                :min="1"
+                :step="1"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-divider content-position="left">SMTP 邮件推送</el-divider>
+        <el-divider content-position="left">
+          SMTP 邮件推送
+        </el-divider>
         <el-form-item label="启用 SMTP">
           <el-switch v-model="form.smtp_enabled" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="8">
             <el-form-item label="SMTP 主机">
-              <el-input v-model="form.smtp_host" :disabled="!form.smtp_enabled" />
+              <el-input
+                v-model="form.smtp_host"
+                :disabled="!form.smtp_enabled"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="SMTP 端口">
-              <el-input-number v-model="form.smtp_port" :disabled="!form.smtp_enabled" :min="1" :max="65535" style="width: 100%" />
+              <el-input-number
+                v-model="form.smtp_port"
+                :disabled="!form.smtp_enabled"
+                :min="1"
+                :max="65535"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="加密方式">
-              <el-select v-model="form.smtp_mode" :disabled="!form.smtp_enabled" style="width: 100%">
-                <el-option label="SSL（端口 465）" value="ssl" />
-                <el-option label="STARTTLS（端口 587）" value="starttls" />
-                <el-option label="明文（内网/调试）" value="plain" />
+              <el-select
+                v-model="form.smtp_mode"
+                :disabled="!form.smtp_enabled"
+                style="width: 100%"
+              >
+                <el-option
+                  label="SSL（端口 465）"
+                  value="ssl"
+                />
+                <el-option
+                  label="STARTTLS（端口 587）"
+                  value="starttls"
+                />
+                <el-option
+                  label="明文（内网/调试）"
+                  value="plain"
+                />
               </el-select>
             </el-form-item>
           </el-col>
@@ -88,44 +174,98 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="SMTP 账号">
-              <el-input v-model="form.smtp_user" :disabled="!form.smtp_enabled" />
+              <el-input
+                v-model="form.smtp_user"
+                :disabled="!form.smtp_enabled"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="SMTP 密码">
-              <el-input v-model="form.smtp_pass" :disabled="!form.smtp_enabled" type="password" show-password placeholder="授权码/密码" />
+              <el-input
+                v-model="form.smtp_pass"
+                :disabled="!form.smtp_enabled"
+                type="password"
+                show-password
+                placeholder="授权码/密码"
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="发件人">
-          <el-input v-model="form.smtp_from" :disabled="!form.smtp_enabled" placeholder="no-reply@example.com" />
+          <el-input
+            v-model="form.smtp_from"
+            :disabled="!form.smtp_enabled"
+            placeholder="no-reply@example.com"
+          />
         </el-form-item>
 
-        <el-divider content-position="left">瑕疵类型</el-divider>
-        <div v-if="form.defect_types.length === 0" class="empty-tip">暂无瑕疵类型，请添加。</div>
-        <el-table :data="form.defect_types" border size="small" style="margin-bottom: 12px">
-          <el-table-column label="名称" min-width="120">
+        <el-divider content-position="left">
+          瑕疵类型
+        </el-divider>
+        <div
+          v-if="form.defect_types.length === 0"
+          class="empty-tip"
+        >
+          暂无瑕疵类型，请添加。
+        </div>
+        <el-table
+          :data="form.defect_types"
+          border
+          size="small"
+          style="margin-bottom: 12px"
+        >
+          <el-table-column
+            label="名称"
+            min-width="120"
+          >
             <template #default="{ row }">
-              <el-input v-model="row.name" size="small" />
+              <el-input
+                v-model="row.name"
+                size="small"
+              />
             </template>
           </el-table-column>
-          <el-table-column label="颜色" width="120">
+          <el-table-column
+            label="颜色"
+            width="120"
+          >
             <template #default="{ row }">
-              <el-color-picker v-model="row.color" size="small" />
+              <el-color-picker
+                v-model="row.color"
+                size="small"
+              />
             </template>
           </el-table-column>
-          <el-table-column label="启用" width="90" align="center">
+          <el-table-column
+            label="启用"
+            width="90"
+            align="center"
+          >
             <template #default="{ row }">
               <el-switch v-model="row.enabled" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90" align="center">
+          <el-table-column
+            label="操作"
+            width="90"
+            align="center"
+          >
             <template #default="{ $index }">
-              <el-button type="danger" text size="small" @click="removeDefect($index)">删除</el-button>
+              <el-button
+                type="danger"
+                text
+                size="small"
+                @click="removeDefect($index)"
+              >
+                删除
+              </el-button>
             </template>
           </el-table-column>
         </el-table>
-        <el-button @click="addDefect">+ 添加瑕疵类型</el-button>
+        <el-button @click="addDefect">
+          + 添加瑕疵类型
+        </el-button>
       </el-form>
     </el-card>
   </div>

@@ -3,23 +3,36 @@
     <h2>系统仪表盘</h2>
     <el-row :gutter="16">
       <el-col :span="8">
-        <el-card shadow="hover">CPU 使用率：<b>{{ health?.cpu_percent ?? '--' }}%</b></el-card>
+        <el-card shadow="hover">
+          CPU 使用率：<b>{{ health?.cpu_percent ?? '--' }}%</b>
+        </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card shadow="hover">内存使用率：<b>{{ health?.memory_percent ?? '--' }}%</b></el-card>
+        <el-card shadow="hover">
+          内存使用率：<b>{{ health?.memory_percent ?? '--' }}%</b>
+        </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card shadow="hover">磁盘使用率：<b>{{ health?.disk_percent ?? '--' }}%</b></el-card>
+        <el-card shadow="hover">
+          磁盘使用率：<b>{{ health?.disk_percent ?? '--' }}%</b>
+        </el-card>
       </el-col>
     </el-row>
 
     <!-- L9 业务级健康指标 -->
-    <el-row :gutter="16" style="margin-top: 16px">
+    <el-row
+      :gutter="16"
+      style="margin-top: 16px"
+    >
       <el-col :span="6">
-        <el-card shadow="hover">推理延迟 P50：<b>{{ health?.inference_latency_ms?.p50 ?? '--' }} ms</b></el-card>
+        <el-card shadow="hover">
+          推理延迟 P50：<b>{{ health?.inference_latency_ms?.p50 ?? '--' }} ms</b>
+        </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover">推理延迟 P95：<b>{{ health?.inference_latency_ms?.p95 ?? '--' }} ms</b></el-card>
+        <el-card shadow="hover">
+          推理延迟 P95：<b>{{ health?.inference_latency_ms?.p95 ?? '--' }} ms</b>
+        </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
@@ -27,41 +40,82 @@
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover">WS 在线连接：<b>{{ health?.websocket_clients ?? '--' }}</b></el-card>
+        <el-card shadow="hover">
+          WS 在线连接：<b>{{ health?.websocket_clients ?? '--' }}</b>
+        </el-card>
       </el-col>
     </el-row>
-    <el-row :gutter="16" style="margin-top: 16px">
+    <el-row
+      :gutter="16"
+      style="margin-top: 16px"
+    >
       <el-col :span="6">
-        <el-card shadow="hover">DB 大小：<b>{{ health?.db_size_mb ?? '--' }} MB</b></el-card>
+        <el-card shadow="hover">
+          DB 大小：<b>{{ health?.db_size_mb ?? '--' }} MB</b>
+        </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover">写入 QPS：<b>{{ health?.write_qps ?? '--' }}</b></el-card>
+        <el-card shadow="hover">
+          写入 QPS：<b>{{ health?.write_qps ?? '--' }}</b>
+        </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="hover">检测器模式：<b>{{ health?.detector_mode ?? '--' }}</b></el-card>
+        <el-card shadow="hover">
+          检测器模式：<b>{{ health?.detector_mode ?? '--' }}</b>
+        </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
           配置状态：
-          <el-tag v-if="health?.config_degraded" type="danger" size="small">降级</el-tag>
-          <el-tag v-else type="success" size="small">正常</el-tag>
+          <el-tag
+            v-if="health?.config_degraded"
+            type="danger"
+            size="small"
+          >
+            降级
+          </el-tag>
+          <el-tag
+            v-else
+            type="success"
+            size="small"
+          >
+            正常
+          </el-tag>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-card shadow="hover" style="margin-top: 16px">
-      <div ref="chart" style="height: 300px"></div>
+    <el-card
+      shadow="hover"
+      style="margin-top: 16px"
+    >
+      <div
+        ref="chart"
+        style="height: 300px"
+      />
     </el-card>
 
-    <el-row :gutter="16" style="margin-top: 16px">
+    <el-row
+      :gutter="16"
+      style="margin-top: 16px"
+    >
       <el-col :span="8">
-        <el-statistic title="检测总数" :value="stats.total" />
+        <el-statistic
+          title="检测总数"
+          :value="stats.total"
+        />
       </el-col>
       <el-col :span="8">
-        <el-statistic title="缺陷总数" :value="stats.defect_count" />
+        <el-statistic
+          title="缺陷总数"
+          :value="stats.defect_count"
+        />
       </el-col>
       <el-col :span="8">
-        <el-statistic title="缺陷率" :value="(stats.defect_rate * 100).toFixed(1) + '%'" />
+        <el-statistic
+          title="缺陷率"
+          :value="(stats.defect_rate * 100).toFixed(1) + '%'"
+        />
       </el-col>
     </el-row>
   </div>

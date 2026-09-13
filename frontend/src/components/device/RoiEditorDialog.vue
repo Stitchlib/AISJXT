@@ -19,8 +19,20 @@
       @mouseup="onMouseUp"
       @mouseleave="onMouseUp"
     >
-      <img v-if="snapshot" :key="snapKey" :src="snapshot" class="roi-bg" alt="ROI 底图" @error="snapshot = ''" />
-      <div v-else class="roi-bg-placeholder">快照加载失败，仍可直接拖拽画框</div>
+      <img
+        v-if="snapshot"
+        :key="snapKey"
+        :src="snapshot"
+        class="roi-bg"
+        alt="ROI 底图"
+        @error="snapshot = ''"
+      >
+      <div
+        v-else
+        class="roi-bg-placeholder"
+      >
+        快照加载失败，仍可直接拖拽画框
+      </div>
       <div
         v-for="(r, i) in rects"
         :key="i"
@@ -28,7 +40,12 @@
         :style="{ left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.w * 100 + '%', height: r.h * 100 + '%' }"
       >
         <span class="roi-tag">ROI {{ i + 1 }}</span>
-        <span class="roi-del" title="删除" @mousedown.stop @click="removeRect(i)">×</span>
+        <span
+          class="roi-del"
+          title="删除"
+          @mousedown.stop
+          @click="removeRect(i)"
+        >×</span>
       </div>
       <div
         v-if="drawingRect"
@@ -37,15 +54,32 @@
       />
     </div>
     <div class="roi-list">
-      <span v-if="!rects.length" class="roi-empty">未配置（全画面检测）</span>
-      <code v-for="(r, i) in rects" :key="i" class="roi-item">
+      <span
+        v-if="!rects.length"
+        class="roi-empty"
+      >未配置（全画面检测）</span>
+      <code
+        v-for="(r, i) in rects"
+        :key="i"
+        class="roi-item"
+      >
         ROI{{ i + 1 }}: x={{ r.x.toFixed(2) }}, y={{ r.y.toFixed(2) }}, w={{ r.w.toFixed(2) }}, h={{ r.h.toFixed(2) }}
       </code>
     </div>
     <template #footer>
-      <el-button @click="clearRects">清空（全画面）</el-button>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="emit('save', camera.id, rects.map((r) => ({ ...r })))">保存 ROI</el-button>
+      <el-button @click="clearRects">
+        清空（全画面）
+      </el-button>
+      <el-button @click="emit('update:modelValue', false)">
+        取消
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="saving"
+        @click="emit('save', camera.id, rects.map((r) => ({ ...r })))"
+      >
+        保存 ROI
+      </el-button>
     </template>
   </el-dialog>
 </template>

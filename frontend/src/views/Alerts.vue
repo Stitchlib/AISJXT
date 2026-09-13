@@ -2,7 +2,12 @@
   <div>
     <h2>告警中心</h2>
 
-    <AlertStatsCard v-model:days="statsDays" :stats="stats" :loading="statsLoading" @change="loadStatistics" />
+    <AlertStatsCard
+      v-model:days="statsDays"
+      :stats="stats"
+      :loading="statsLoading"
+      @change="loadStatistics"
+    />
 
     <AlertRuleTable
       :rules="rules"
@@ -34,7 +39,11 @@
       @save="saveVerdict"
     />
 
-    <EventImageDialog v-model="imageDialog" :url="eventImageUrl" :loading="imageLoading" />
+    <EventImageDialog
+      v-model="imageDialog"
+      :url="eventImageUrl"
+      :loading="imageLoading"
+    />
 
     <AlertRuleDialog
       v-model="ruleDialog"

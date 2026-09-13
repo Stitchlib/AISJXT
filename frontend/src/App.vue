@@ -1,9 +1,17 @@
 <template>
   <router-view v-if="isLogin" />
 
-  <el-container v-else class="app">
-    <el-aside width="220px" class="aside">
-      <div class="logo">映己 AI 视觉质检</div>
+  <el-container
+    v-else
+    class="app"
+  >
+    <el-aside
+      width="220px"
+      class="aside"
+    >
+      <div class="logo">
+        映己 AI 视觉质检
+      </div>
       <el-menu
         :default-active="active"
         router
@@ -12,25 +20,55 @@
         text-color="#c0c4cc"
         active-text-color="#ffffff"
       >
-        <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">
+        <el-menu-item
+          v-for="m in menus"
+          :key="m.path"
+          :index="m.path"
+        >
           {{ m.icon }} {{ m.label }}
         </el-menu-item>
       </el-menu>
-      <div class="conn" :class="store.connected ? 'ok' : 'bad'">
+      <div
+        class="conn"
+        :class="store.connected ? 'ok' : 'bad'"
+      >
         后端连接：{{ store.connected ? '已连接' : '未连接' }}
       </div>
     </el-aside>
 
     <el-container>
       <el-header class="header">
-        <div class="title">{{ route.meta.title || '映己 AI 视觉质检' }}</div>
+        <div class="title">
+          {{ route.meta.title || '映己 AI 视觉质检' }}
+        </div>
         <div class="user">
-          <el-badge :value="store.alertUnread" :hidden="!store.alertUnread" :max="99" class="badge">
-            <el-button text @click="goAlerts">🔔 告警</el-button>
+          <el-badge
+            :value="store.alertUnread"
+            :hidden="!store.alertUnread"
+            :max="99"
+            class="badge"
+          >
+            <el-button
+              text
+              @click="goAlerts"
+            >
+              🔔 告警
+            </el-button>
           </el-badge>
           <span class="uname">{{ store.user?.display_name || store.user?.username || '未登录' }}</span>
-          <el-tag size="small" :type="roleTagType">{{ roleText }}</el-tag>
-          <el-button type="primary" text @click="logout">退出登录</el-button>
+          <el-tag
+            size="small"
+            :type="roleTagType"
+          >
+            {{ roleText }}
+          </el-tag>
+          <el-button
+            type="primary"
+            text
+            @click="logout"
+          >
+            退出登录
+          </el-button>
         </div>
       </el-header>
       <el-main class="main">

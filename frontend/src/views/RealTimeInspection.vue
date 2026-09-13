@@ -13,13 +13,35 @@
           style="width: 280px"
           :disabled="store.inspection.running"
         >
-          <el-option v-for="c in store.cameras" :key="c.id" :label="c.name || c.id" :value="c.id" />
+          <el-option
+            v-for="c in store.cameras"
+            :key="c.id"
+            :label="c.name || c.id"
+            :value="c.id"
+          />
         </el-select>
-        <el-button type="primary" :disabled="store.inspection.running || !selectedCameras.length" @click="start">
+        <el-button
+          type="primary"
+          :disabled="store.inspection.running || !selectedCameras.length"
+          @click="start"
+        >
           开始检测
         </el-button>
-        <el-button type="primary" plain :disabled="store.inspection.running" @click="startAll">全部启动</el-button>
-        <el-button type="danger" :disabled="!store.inspection.running" @click="stop">停止检测</el-button>
+        <el-button
+          type="primary"
+          plain
+          :disabled="store.inspection.running"
+          @click="startAll"
+        >
+          全部启动
+        </el-button>
+        <el-button
+          type="danger"
+          :disabled="!store.inspection.running"
+          @click="stop"
+        >
+          停止检测
+        </el-button>
         <el-tag :type="store.inspection.running ? 'success' : 'info'">
           状态：{{ runningText }}
         </el-tag>
@@ -30,7 +52,12 @@
     <!-- G4 批次管理：当前批次显示 + 新建/结束 -->
     <div class="batch-bar">
       <span class="batch-label">当前批次：</span>
-      <el-select v-model="activeBatchId" placeholder="选择批次（可选）" clearable style="width: 240px">
+      <el-select
+        v-model="activeBatchId"
+        placeholder="选择批次（可选）"
+        clearable
+        style="width: 240px"
+      >
         <el-option
           v-for="b in openBatches"
           :key="b.batch_no"
@@ -38,17 +65,50 @@
           :value="b.batch_no"
         />
       </el-select>
-      <el-tag v-if="!activeBatchId" type="info">未绑定</el-tag>
-      <el-button size="small" type="success" @click="openBatchDialog">新建批次</el-button>
-      <el-button size="small" type="warning" :disabled="!activeBatchId" @click="endBatch">结束批次</el-button>
+      <el-tag
+        v-if="!activeBatchId"
+        type="info"
+      >
+        未绑定
+      </el-tag>
+      <el-button
+        size="small"
+        type="success"
+        @click="openBatchDialog"
+      >
+        新建批次
+      </el-button>
+      <el-button
+        size="small"
+        type="warning"
+        :disabled="!activeBatchId"
+        @click="endBatch"
+      >
+        结束批次
+      </el-button>
     </div>
 
-    <el-alert v-if="cameraError" type="warning" :closable="false" :title="cameraError" style="margin-bottom: 12px" />
-    <el-alert v-if="error" type="error" :closable="false" :title="error" style="margin-bottom: 12px" />
+    <el-alert
+      v-if="cameraError"
+      type="warning"
+      :closable="false"
+      :title="cameraError"
+      style="margin-bottom: 12px"
+    />
+    <el-alert
+      v-if="error"
+      type="error"
+      :closable="false"
+      :title="error"
+      style="margin-bottom: 12px"
+    />
 
     <el-row :gutter="16">
       <el-col :span="10">
-        <el-card shadow="hover" style="min-height: 280px">
+        <el-card
+          shadow="hover"
+          style="min-height: 280px"
+        >
           <div class="card-title">
             实时画面
             <span class="ts">{{ streamStatus }}</span>
@@ -61,8 +121,11 @@
               class="video"
               alt="实时画面"
               @error="onVideoError"
+            >
+            <el-empty
+              v-else
+              description="请先选择摄像头"
             />
-            <el-empty v-else description="请先选择摄像头" />
             <el-alert
               v-if="videoError"
               class="video-err"
@@ -72,19 +135,45 @@
             />
           </div>
           <div class="video-bar">
-            <el-select v-model="viewCamera" size="small" style="width: 170px" placeholder="查看画面">
-              <el-option v-for="c in store.cameras" :key="c.id" :label="c.name || c.id" :value="c.id" />
+            <el-select
+              v-model="viewCamera"
+              size="small"
+              style="width: 170px"
+              placeholder="查看画面"
+            >
+              <el-option
+                v-for="c in store.cameras"
+                :key="c.id"
+                :label="c.name || c.id"
+                :value="c.id"
+              />
             </el-select>
-            <el-button size="small" :disabled="!videoSrc" @click="reloadVideo">刷新画面</el-button>
-            <el-switch v-model="annotateVideo" active-text="叠加缺陷框" size="small" />
+            <el-button
+              size="small"
+              :disabled="!videoSrc"
+              @click="reloadVideo"
+            >
+              刷新画面
+            </el-button>
+            <el-switch
+              v-model="annotateVideo"
+              active-text="叠加缺陷框"
+              size="small"
+            />
           </div>
         </el-card>
       </el-col>
       <el-col :span="14">
-        <el-card shadow="hover" style="min-height: 280px">
+        <el-card
+          shadow="hover"
+          style="min-height: 280px"
+        >
           <div class="card-title">
             最新检测结果
-            <span v-if="displayResult" class="ts">{{ displayResult.timestamp }}</span>
+            <span
+              v-if="displayResult"
+              class="ts"
+            >{{ displayResult.timestamp }}</span>
           </div>
           <!-- G5：多摄产生结果时可切换查看各摄最新一帧 -->
           <el-select
@@ -93,7 +182,12 @@
             size="small"
             style="width: 200px; margin-bottom: 8px"
           >
-            <el-option v-for="cid in resultCams" :key="cid" :label="camLabel(cid)" :value="cid" />
+            <el-option
+              v-for="cid in resultCams"
+              :key="cid"
+              :label="camLabel(cid)"
+              :value="cid"
+            />
           </el-select>
           <template v-if="displayResult">
             <p class="metrics">
@@ -110,34 +204,75 @@
               border
               max-height="180"
             >
-              <el-table-column prop="class_name" label="瑕疵类别" />
+              <el-table-column
+                prop="class_name"
+                label="瑕疵类别"
+              />
               <el-table-column label="置信度">
-                <template #default="{ row }">{{ (row.confidence * 100).toFixed(1) }}%</template>
+                <template #default="{ row }">
+                  {{ (row.confidence * 100).toFixed(1) }}%
+                </template>
               </el-table-column>
             </el-table>
-            <el-empty v-else description="本帧无缺陷" :image-size="80" />
+            <el-empty
+              v-else
+              description="本帧无缺陷"
+              :image-size="80"
+            />
           </template>
-          <el-empty v-else description="暂无检测数据，点击「开始检测」" />
+          <el-empty
+            v-else
+            description="暂无检测数据，点击「开始检测」"
+          />
         </el-card>
       </el-col>
     </el-row>
 
     <!-- G4 新建批次对话框 -->
-    <el-dialog v-model="batchDialog" title="新建批次" width="420px">
-      <el-form :model="batchForm" label-width="80px">
-        <el-form-item label="批次号" required>
-          <el-input v-model="batchForm.batch_no" placeholder="如 B20260903-01" />
+    <el-dialog
+      v-model="batchDialog"
+      title="新建批次"
+      width="420px"
+    >
+      <el-form
+        :model="batchForm"
+        label-width="80px"
+      >
+        <el-form-item
+          label="批次号"
+          required
+        >
+          <el-input
+            v-model="batchForm.batch_no"
+            placeholder="如 B20260903-01"
+          />
         </el-form-item>
         <el-form-item label="产品">
-          <el-input v-model="batchForm.product" placeholder="可选，如 衬衫-白色" />
+          <el-input
+            v-model="batchForm.product"
+            placeholder="可选，如 衬衫-白色"
+          />
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="batchForm.note" type="textarea" :rows="2" placeholder="可选" />
+          <el-input
+            v-model="batchForm.note"
+            type="textarea"
+            :rows="2"
+            placeholder="可选"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="batchDialog = false">取消</el-button>
-        <el-button type="primary" :loading="batchSaving" @click="createBatch">创建批次</el-button>
+        <el-button @click="batchDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="batchSaving"
+          @click="createBatch"
+        >
+          创建批次
+        </el-button>
       </template>
     </el-dialog>
   </div>

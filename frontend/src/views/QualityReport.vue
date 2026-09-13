@@ -3,22 +3,67 @@
     <div class="head">
       <h2>质检报告</h2>
       <div class="ops">
-        <el-select v-model="selectedBatch" placeholder="全部批次" clearable style="width: 200px" @change="load">
-          <el-option v-for="b in batches" :key="b.batch_no" :label="b.batch_no + (b.product ? '（' + b.product + '）' : '')" :value="b.batch_no" />
+        <el-select
+          v-model="selectedBatch"
+          placeholder="全部批次"
+          clearable
+          style="width: 200px"
+          @change="load"
+        >
+          <el-option
+            v-for="b in batches"
+            :key="b.batch_no"
+            :label="b.batch_no + (b.product ? '（' + b.product + '）' : '')"
+            :value="b.batch_no"
+          />
         </el-select>
-        <el-select v-model="bucket" style="width: 140px" :disabled="!!selectedBatch" @change="load">
-          <el-option label="按天" value="day" />
-          <el-option label="按小时" value="hour" />
-          <el-option label="按周" value="week" />
-          <el-option label="按月" value="month" />
+        <el-select
+          v-model="bucket"
+          style="width: 140px"
+          :disabled="!!selectedBatch"
+          @change="load"
+        >
+          <el-option
+            label="按天"
+            value="day"
+          />
+          <el-option
+            label="按小时"
+            value="hour"
+          />
+          <el-option
+            label="按周"
+            value="week"
+          />
+          <el-option
+            label="按月"
+            value="month"
+          />
         </el-select>
-        <el-button :loading="exportingExcel" @click="exportExcel">导出 Excel</el-button>
-        <el-button :loading="exportingCsv" @click="exportCsv">导出 CSV</el-button>
+        <el-button
+          :loading="exportingExcel"
+          @click="exportExcel"
+        >
+          导出 Excel
+        </el-button>
+        <el-button
+          :loading="exportingCsv"
+          @click="exportCsv"
+        >
+          导出 CSV
+        </el-button>
       </div>
     </div>
 
-    <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
-      <template #title>指标口径说明</template>
+    <el-alert
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+    >
+      <template #title>
+        指标口径说明
+      </template>
       <div class="metric-note">
         <div><b>单帧缺陷率</b> = 该帧检出缺陷框数 / 检出对象总数（缺陷专用模型 metric_version=2 时即缺陷框占比；COCO/仿真基线 metric_version=1）。</div>
         <div><b>批次 / 按日(周/月)聚合不良率</b> = 缺陷帧数 / 总帧数（一帧检出多个缺陷框只计 1 个缺陷帧，不做框数求和），四舍五入保留 4 位小数。</div>
@@ -26,36 +71,76 @@
       </div>
     </el-alert>
 
-    <el-row :gutter="16" v-loading="loading">
-      <el-col :span="6">
-        <el-card shadow="hover"><el-statistic title="总检测数" :value="summary.total" /></el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover"><el-statistic title="缺陷总数" :value="summary.defect_count" /></el-card>
-      </el-col>
+    <el-row
+      v-loading="loading"
+      :gutter="16"
+    >
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="不良率" :value="(summary.defect_rate * 100).toFixed(2) + '%'" />
+          <el-statistic
+            title="总检测数"
+            :value="summary.total"
+          />
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover">
-          <el-statistic title="平均耗时(ms)" :value="Math.round(summary.avg_processing_ms || 0)" />
+          <el-statistic
+            title="缺陷总数"
+            :value="summary.defect_count"
+          />
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">
+          <el-statistic
+            title="不良率"
+            :value="(summary.defect_rate * 100).toFixed(2) + '%'"
+          />
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover">
+          <el-statistic
+            title="平均耗时(ms)"
+            :value="Math.round(summary.avg_processing_ms || 0)"
+          />
         </el-card>
       </el-col>
     </el-row>
 
-    <el-row :gutter="16" style="margin-top: 16px">
+    <el-row
+      :gutter="16"
+      style="margin-top: 16px"
+    >
       <el-col :span="10">
-        <el-card v-loading="loading" shadow="hover">
-          <div ref="pieChart" style="height: 320px"></div>
-          <el-empty v-if="!loading && byType.length === 0" description="暂无瑕疵分类数据" />
+        <el-card
+          v-loading="loading"
+          shadow="hover"
+        >
+          <div
+            ref="pieChart"
+            style="height: 320px"
+          />
+          <el-empty
+            v-if="!loading && byType.length === 0"
+            description="暂无瑕疵分类数据"
+          />
         </el-card>
       </el-col>
       <el-col :span="14">
-        <el-card v-loading="loading" shadow="hover">
-          <div ref="trendChart" style="height: 320px"></div>
-          <el-empty v-if="!loading && trend.length === 0" description="暂无趋势数据" />
+        <el-card
+          v-loading="loading"
+          shadow="hover"
+        >
+          <div
+            ref="trendChart"
+            style="height: 320px"
+          />
+          <el-empty
+            v-if="!loading && trend.length === 0"
+            description="暂无趋势数据"
+          />
         </el-card>
       </el-col>
     </el-row>

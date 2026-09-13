@@ -5,7 +5,10 @@
     width="720px"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <div v-loading="loading" class="event-image-box">
+    <div
+      v-loading="loading"
+      class="event-image-box"
+    >
       <el-image
         v-if="url"
         :src="url"
@@ -14,7 +17,10 @@
         preview-teleported
         style="width: 100%; max-height: 480px"
       />
-      <el-empty v-else-if="!loading" description="该事件关联的检测记录无现场图（可能未开启留存或已被清理）" />
+      <el-empty
+        v-else-if="!loading"
+        description="该事件关联的检测记录无现场图（可能未开启留存或已被清理）"
+      />
     </div>
   </el-dialog>
 </template>

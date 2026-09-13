@@ -1,11 +1,29 @@
 <template>
   <div class="login-wrap">
-    <el-card class="login-card" shadow="always">
-      <div class="brand">映己 AI 视觉质检系统</div>
-      <div class="subtitle">请登录以继续使用</div>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="0" @submit.prevent>
+    <el-card
+      class="login-card"
+      shadow="always"
+    >
+      <div class="brand">
+        映己 AI 视觉质检系统
+      </div>
+      <div class="subtitle">
+        请登录以继续使用
+      </div>
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-width="0"
+        @submit.prevent
+      >
         <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="用户名" size="large" :prefix-icon="UserIcon" />
+          <el-input
+            v-model="form.username"
+            placeholder="用户名"
+            size="large"
+            :prefix-icon="UserIcon"
+          />
         </el-form-item>
         <el-form-item prop="password">
           <el-input
@@ -19,7 +37,13 @@
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" size="large" style="width: 100%" :loading="loading" @click="onSubmit">
+          <el-button
+            type="primary"
+            size="large"
+            style="width: 100%"
+            :loading="loading"
+            @click="onSubmit"
+          >
             登录
           </el-button>
         </el-form-item>

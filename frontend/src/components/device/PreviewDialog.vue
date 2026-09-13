@@ -6,13 +6,36 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="preview-wrap">
-      <img v-if="src" :key="reloadKey" :src="src" class="preview" alt="实时画面预览" @error="onError" />
-      <el-empty v-else description="无可预览设备" />
-      <el-alert v-if="errorMsg" type="error" :closable="false" :title="errorMsg" style="margin-top: 8px" />
+      <img
+        v-if="src"
+        :key="reloadKey"
+        :src="src"
+        class="preview"
+        alt="实时画面预览"
+        @error="onError"
+      >
+      <el-empty
+        v-else
+        description="无可预览设备"
+      />
+      <el-alert
+        v-if="errorMsg"
+        type="error"
+        :closable="false"
+        :title="errorMsg"
+        style="margin-top: 8px"
+      />
     </div>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">关闭</el-button>
-      <el-button type="primary" @click="reload">刷新预览</el-button>
+      <el-button @click="emit('update:modelValue', false)">
+        关闭
+      </el-button>
+      <el-button
+        type="primary"
+        @click="reload"
+      >
+        刷新预览
+      </el-button>
     </template>
   </el-dialog>
 </template>

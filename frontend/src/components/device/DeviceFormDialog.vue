@@ -5,36 +5,114 @@
     width="460px"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <el-form :model="form" label-width="90px">
-      <el-form-item label="设备ID"><el-input v-model="form.id" placeholder="如 cam_002" /></el-form-item>
-      <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
+    <el-form
+      :model="form"
+      label-width="90px"
+    >
+      <el-form-item label="设备ID">
+        <el-input
+          v-model="form.id"
+          placeholder="如 cam_002"
+        />
+      </el-form-item>
+      <el-form-item label="名称">
+        <el-input v-model="form.name" />
+      </el-form-item>
       <el-form-item label="类型">
-        <el-select v-model="form.type" style="width: 100%">
-          <el-option label="RTSP" value="rtsp" />
-          <el-option label="USB" value="usb" />
-          <el-option label="HTTP" value="http" />
-          <el-option label="仿真" value="simulation" />
+        <el-select
+          v-model="form.type"
+          style="width: 100%"
+        >
+          <el-option
+            label="RTSP"
+            value="rtsp"
+          />
+          <el-option
+            label="USB"
+            value="usb"
+          />
+          <el-option
+            label="HTTP"
+            value="http"
+          />
+          <el-option
+            label="仿真"
+            value="simulation"
+          />
         </el-select>
       </el-form-item>
-      <el-form-item label="来源"><el-input v-model="form.source" placeholder="rtsp://... 或 0" /></el-form-item>
-      <el-form-item label="账号"><el-input v-model="form.username" placeholder="匿名可留空" /></el-form-item>
-      <el-form-item label="密码"><el-input v-model="form.password" type="password" placeholder="匿名可留空" show-password /></el-form-item>
-      <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
+      <el-form-item label="来源">
+        <el-input
+          v-model="form.source"
+          placeholder="rtsp://... 或 0"
+        />
+      </el-form-item>
+      <el-form-item label="账号">
+        <el-input
+          v-model="form.username"
+          placeholder="匿名可留空"
+        />
+      </el-form-item>
+      <el-form-item label="密码">
+        <el-input
+          v-model="form.password"
+          type="password"
+          placeholder="匿名可留空"
+          show-password
+        />
+      </el-form-item>
+      <el-form-item label="启用">
+        <el-switch v-model="form.enabled" />
+      </el-form-item>
     </el-form>
-    <div v-if="previewSrc" class="add-preview">
+    <div
+      v-if="previewSrc"
+      class="add-preview"
+    >
       <div class="add-preview-head">
         <span>实时预览（保存前先确认可取流）</span>
-        <el-button size="small" text type="primary" @click="reloadPreview">刷新预览</el-button>
+        <el-button
+          size="small"
+          text
+          type="primary"
+          @click="reloadPreview"
+        >
+          刷新预览
+        </el-button>
       </div>
       <div class="add-preview-wrap">
-        <img :key="previewKey" :src="previewSrc" class="add-preview-img" alt="摄像头预览" @error="onPreviewError" />
-        <el-alert v-if="previewError" type="warning" :closable="false" :title="previewError" />
+        <img
+          :key="previewKey"
+          :src="previewSrc"
+          class="add-preview-img"
+          alt="摄像头预览"
+          @error="onPreviewError"
+        >
+        <el-alert
+          v-if="previewError"
+          type="warning"
+          :closable="false"
+          :title="previewError"
+        />
       </div>
     </div>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button :loading="testing" @click="emit('test', { ...form })">测试连接</el-button>
-      <el-button type="primary" :loading="saving" @click="emit('save', { ...form })">保存</el-button>
+      <el-button @click="emit('update:modelValue', false)">
+        取消
+      </el-button>
+      <el-button
+        :loading="testing"
+        @click="emit('test', { ...form })"
+      >
+        测试连接
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="saving"
+        @click="emit('save', { ...form })"
+      >
+        保存
+      </el-button>
     </template>
   </el-dialog>
 </template>

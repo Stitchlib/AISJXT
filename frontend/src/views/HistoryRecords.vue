@@ -2,52 +2,130 @@
   <div>
     <div class="head">
       <h2>历史记录</h2>
-      <el-button :loading="exporting" @click="exportCsv">导出 CSV</el-button>
+      <el-button
+        :loading="exporting"
+        @click="exportCsv"
+      >
+        导出 CSV
+      </el-button>
     </div>
 
-    <el-card shadow="hover" style="margin-bottom: 16px">
-      <el-form :inline="true" @submit.prevent>
+    <el-card
+      shadow="hover"
+      style="margin-bottom: 16px"
+    >
+      <el-form
+        :inline="true"
+        @submit.prevent
+      >
         <el-form-item label="摄像头">
-          <el-select v-model="filters.camera_id" placeholder="全部" clearable style="width: 200px" @change="onFilter">
-            <el-option v-for="c in cameras" :key="c.id" :label="c.name || c.id" :value="c.id" />
+          <el-select
+            v-model="filters.camera_id"
+            placeholder="全部"
+            clearable
+            style="width: 200px"
+            @change="onFilter"
+          >
+            <el-option
+              v-for="c in cameras"
+              :key="c.id"
+              :label="c.name || c.id"
+              :value="c.id"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="批次">
-          <el-select v-model="filters.batch_id" placeholder="全部" clearable style="width: 200px" @change="onFilter">
-            <el-option v-for="b in batches" :key="b.batch_no" :label="b.batch_no + (b.product ? '（' + b.product + '）' : '')" :value="b.batch_no" />
+          <el-select
+            v-model="filters.batch_id"
+            placeholder="全部"
+            clearable
+            style="width: 200px"
+            @change="onFilter"
+          >
+            <el-option
+              v-for="b in batches"
+              :key="b.batch_no"
+              :label="b.batch_no + (b.product ? '（' + b.product + '）' : '')"
+              :value="b.batch_no"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="仅看有缺陷">
-          <el-switch v-model="filters.defect_only" @change="onFilter" />
+          <el-switch
+            v-model="filters.defect_only"
+            @change="onFilter"
+          />
         </el-form-item>
       </el-form>
     </el-card>
 
-    <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
+    <el-alert
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+    >
       <template #title>
         口径说明：表中「不良率」为<b>单帧缺陷率</b> = 该帧缺陷框数 / 检出对象总数；
         质检报告页的批次 / 按日不良率为<b>聚合口径</b> = 缺陷帧数 / 总帧数，两者不可混用。
       </template>
     </el-alert>
 
-    <el-card v-loading="loading" shadow="hover">
-      <el-empty v-if="!loading && items.length === 0" description="暂无检测记录" />
-      <el-table v-else :data="items" border row-key="id">
+    <el-card
+      v-loading="loading"
+      shadow="hover"
+    >
+      <el-empty
+        v-if="!loading && items.length === 0"
+        description="暂无检测记录"
+      />
+      <el-table
+        v-else
+        :data="items"
+        border
+        row-key="id"
+      >
         <el-table-column type="expand">
           <template #default="{ row }">
-            <div v-if="row.defects && row.defects.length" class="defect-list">
-              <div v-for="(d, i) in row.defects" :key="i" class="defect-item">
-                <el-tag size="small">{{ d.class_name }}</el-tag>
+            <div
+              v-if="row.defects && row.defects.length"
+              class="defect-list"
+            >
+              <div
+                v-for="(d, i) in row.defects"
+                :key="i"
+                class="defect-item"
+              >
+                <el-tag size="small">
+                  {{ d.class_name }}
+                </el-tag>
                 <span>置信度：{{ (d.confidence * 100).toFixed(1) }}%</span>
                 <span v-if="d.bbox">位置：x={{ d.bbox.x }} y={{ d.bbox.y }} w={{ d.bbox.width }} h={{ d.bbox.height }}</span>
               </div>
             </div>
-            <div v-else class="defect-list">无缺陷</div>
+            <div
+              v-else
+              class="defect-list"
+            >
+              无缺陷
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="timestamp" label="时间" width="200" />
-        <el-table-column prop="camera_id" label="摄像头" width="140" />
-        <el-table-column label="现场图" width="110" align="center">
+        <el-table-column
+          prop="timestamp"
+          label="时间"
+          width="200"
+        />
+        <el-table-column
+          prop="camera_id"
+          label="摄像头"
+          width="140"
+        />
+        <el-table-column
+          label="现场图"
+          width="110"
+          align="center"
+        >
           <template #default="{ row }">
             <el-image
               v-if="thumbs[row.id]"
@@ -57,22 +135,50 @@
               preview-teleported
               style="width: 80px; height: 60px; border-radius: 4px"
             />
-            <el-tooltip v-else-if="row.image_path" content="图片可能已被保留期/配额清理" placement="top">
+            <el-tooltip
+              v-else-if="row.image_path"
+              content="图片可能已被保留期/配额清理"
+              placement="top"
+            >
               <span class="img-gone">已清理</span>
             </el-tooltip>
             <span v-else>—</span>
           </template>
         </el-table-column>
-        <el-table-column label="缺陷数/总数" width="140">
-          <template #default="{ row }">{{ row.defect_count }} / {{ row.total_count }}</template>
-        </el-table-column>
-        <el-table-column label="不良率" width="100">
-          <template #default="{ row }">{{ (row.defect_rate * 100).toFixed(1) }}%</template>
-        </el-table-column>
-        <el-table-column prop="processing_time_ms" label="耗时(ms)" width="110" />
-        <el-table-column label="仿真" width="90" align="center">
+        <el-table-column
+          label="缺陷数/总数"
+          width="140"
+        >
           <template #default="{ row }">
-            <el-tag v-if="row.is_simulation" size="small" type="warning">仿真</el-tag>
+            {{ row.defect_count }} / {{ row.total_count }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="不良率"
+          width="100"
+        >
+          <template #default="{ row }">
+            {{ (row.defect_rate * 100).toFixed(1) }}%
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="processing_time_ms"
+          label="耗时(ms)"
+          width="110"
+        />
+        <el-table-column
+          label="仿真"
+          width="90"
+          align="center"
+        >
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.is_simulation"
+              size="small"
+              type="warning"
+            >
+              仿真
+            </el-tag>
             <span v-else>—</span>
           </template>
         </el-table-column>

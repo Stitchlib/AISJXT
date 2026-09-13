@@ -5,16 +5,48 @@
     width="460px"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <el-alert type="info" :closable="false" style="margin-bottom: 12px"
-      title="将扫描网段、逐一探测常见 RTSP 地址，验证可取流后自动写入配置并设为当前摄像头。" />
-    <el-form :model="form" label-width="92px">
-      <el-form-item label="网段"><el-input v-model="form.subnet" placeholder="如 192.168.1" /></el-form-item>
-      <el-form-item label="账号"><el-input v-model="form.username" placeholder="匿名可留空" /></el-form-item>
-      <el-form-item label="密码"><el-input v-model="form.password" type="password" placeholder="匿名可留空" show-password /></el-form-item>
+    <el-alert
+      type="info"
+      :closable="false"
+      style="margin-bottom: 12px"
+      title="将扫描网段、逐一探测常见 RTSP 地址，验证可取流后自动写入配置并设为当前摄像头。"
+    />
+    <el-form
+      :model="form"
+      label-width="92px"
+    >
+      <el-form-item label="网段">
+        <el-input
+          v-model="form.subnet"
+          placeholder="如 192.168.1"
+        />
+      </el-form-item>
+      <el-form-item label="账号">
+        <el-input
+          v-model="form.username"
+          placeholder="匿名可留空"
+        />
+      </el-form-item>
+      <el-form-item label="密码">
+        <el-input
+          v-model="form.password"
+          type="password"
+          placeholder="匿名可留空"
+          show-password
+        />
+      </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="warning" :loading="loading" @click="emit('discover', { ...form })">开始发现</el-button>
+      <el-button @click="emit('update:modelValue', false)">
+        取消
+      </el-button>
+      <el-button
+        type="warning"
+        :loading="loading"
+        @click="emit('discover', { ...form })"
+      >
+        开始发现
+      </el-button>
     </template>
   </el-dialog>
 </template>

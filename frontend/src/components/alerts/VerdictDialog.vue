@@ -11,18 +11,37 @@
       </el-form-item>
       <el-form-item label="判定">
         <el-radio-group v-model="form.verdict">
-          <el-radio label="confirmed">确认缺陷</el-radio>
-          <el-radio label="false_positive">误报</el-radio>
-          <el-radio label="missed">漏报</el-radio>
+          <el-radio label="confirmed">
+            确认缺陷
+          </el-radio>
+          <el-radio label="false_positive">
+            误报
+          </el-radio>
+          <el-radio label="missed">
+            漏报
+          </el-radio>
         </el-radio-group>
       </el-form-item>
       <el-form-item label="备注">
-        <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="可选，如：背景纹理干扰" />
+        <el-input
+          v-model="form.remark"
+          type="textarea"
+          :rows="2"
+          placeholder="可选，如：背景纹理干扰"
+        />
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="emit('save', target.id, { verdict: form.verdict, remark: form.remark || undefined })">提交判定</el-button>
+      <el-button @click="emit('update:modelValue', false)">
+        取消
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="saving"
+        @click="emit('save', target.id, { verdict: form.verdict, remark: form.remark || undefined })"
+      >
+        提交判定
+      </el-button>
     </template>
   </el-dialog>
 </template>

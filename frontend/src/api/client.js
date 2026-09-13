@@ -82,7 +82,7 @@ client.interceptors.response.use(
       }
       if (isRefreshing) {
         // 并发请求排队，待刷新完成后用新 token 重放
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           subscribeTokenRefresh((token) => {
             original.headers = original.headers || {}
             original.headers.Authorization = `Bearer ${token}`
