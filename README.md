@@ -186,6 +186,7 @@ docker compose up -d --build
 | `AIQC_DATA_RETENTION_DAYS` / `AIQC_INSPECTION_INTERVAL_MS` / `AIQC_MAX_UPLOAD_MB` / `AIQC_TOKEN_EXPIRE_MINUTES` | 数据保留天数 / 检测节拍(ms) / 模型上传上限(MB) / 令牌时效(分) |
 | `AIQC_BACKUP_DIR` / `AIQC_BACKUP_RETENTION` | SQLite 在线备份目录（默认 `data/backups`）/ 备份保留份数（默认 7） |
 | `AIQC_IMAGE_RETENTION_DAYS` / `AIQC_IMAGE_QUOTA_GB` | 缺陷图片留存天数（默认 7）/ 图片配额 GB（默认 2，超配额触发清理） |
+| `AIQC_RTSP_OPEN_TIMEOUT_SEC` | RTSP 打开/读写超时秒数（默认 30，TCP 传输；进程启动时下发给 OpenCV FFmpeg，避免摄像头离线时长时间挂起） |
 
 ---
 
