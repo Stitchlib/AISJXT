@@ -37,7 +37,7 @@
 ```
 AISJZJRJT/
 ├── edge/                 # 后端（FastAPI）
-│   ├── src/              # 模块化源码：models / config_manager / database /
+│   ├── src/              # 模块化源码：models / config_manager / database（包）/
 │   │                     #   websocket_manager / camera_manager / detector /
 │   │                     #   camera_capture / inspection_engine / notifier /
 │   │                     #   auth / routers/*
@@ -45,8 +45,8 @@ AISJZJRJT/
 │   ├── main.py           # 入口：依赖装配 + 生命周期
 │   └── requirements.txt
 ├── frontend/             # 前端（Vue3）
-│   └── src/              # views(9) / api / store / router / utils
-├── tests/                # pytest：单元 + 端到端集成（真实运行，非 mock）
+│   └── src/              # views(11) / components / composables / api / store / router / utils
+├── tests/                # pytest：单元 + 端到端集成（默认真实链路；摄像头/视频流用例以 mock provider 纳入门禁）
 ├── docs/深度分析报告与开发计划.html
 ├── Dockerfile.backend / Dockerfile.frontend / docker-compose.yml
 ├── start-dev.bat         # 本地一键启动（替代损坏的旧脚本）
@@ -121,6 +121,12 @@ start-dev.bat
 第二期（第二批）新增覆盖：批次/工单创建与绑定（`tests/test_stage2b.py`）、告警人工判定与误报率统计、
 多渠道 Webhook 通知（generic/钉钉/飞书/企业微信，含 mock 单测）、schema 版本化迁移幂等、
 SQLite 在线备份与超额清理（`prune_backups` 保留最近 N 份 + 审计）。
+第三期新增覆盖：RBAC 权限矩阵全格（HTTP 403 + WS 4403 + 越权审计，`test_rbac_matrix.py`）、
+摄像头凭据脱敏与掩码回传不穿、WS 一次性票据（签发/过期/无效）、告警冷却聚合与静默
+（`test_alert_cooling.py`）、通知异步队列（慢 webhook 不阻塞节拍/满队列丢弃保护/关停 drain，
+`test_notification_async.py`）、WS 按摄订阅与慢消费者摘除（`test_ws_subscribe.py`）、
+摄像头配置单一数据源 8 项快照（`test_camera_single_source.py`）、RTSP 超时参数化/检测计数双口径/
+CORS 配置对齐（`test_stage3_low_risk.py`）。当前门禁口径 162 项通过、覆盖率 82.68%。
 
 ---
 
@@ -131,7 +137,7 @@ docker compose up -d --build
 # 前端 http://localhost   后端 http://localhost:8000/docs
 ```
 
-`docker-compose.yml` 不依赖 Redis 等外部组件（SQLite 内嵌）。如需横向扩展可将 `database.py` 替换为 PostgreSQL 实现。
+`docker-compose.yml` 不依赖 Redis 等外部组件（SQLite 内嵌）。如需横向扩展可将 `src/database/` 包替换为 PostgreSQL 实现（门面类 `Database` 的对外 API 保持不变即可无感知切换）。
 
 ---
 
@@ -217,7 +223,7 @@ docker compose up -d --build
 12. **WebSocket 订阅过滤（第三期 2.3）**：`/ws?subscribe=cam_a,cam_b` 只收指定摄像头的 `detection_result`（空=全量，向后兼容）；每客户端独立发送队列，3s 发送超时或队列满即摘除该慢消费者，不影响其他客户端。
 13. **指标口径（第三期 3.2）**：单帧 `defect_rate` = 该帧缺陷框数 / 检出对象总数（`metric_version=2` 缺陷专用模型时即缺陷框占比；COCO/仿真基线为 1）；批次与按日/周/月聚合的不良率 = **缺陷帧数 / 总帧数**（一帧多框只计 1 个缺陷帧），`/reports/summary` 同时给出 `defect_frame_rate` 显式别名；前端质检报告页与历史记录页均有口径说明。
 14. **摄像头配置单一数据源（第三期 3.1）**：摄像头持久化字段唯一存放于 `config.json`（ConfigManager），CameraManager 只做现场物化视图与网络发现，新增/更新/删除/激活均落盘配置，杜绝内存态与配置文件双写漂移。
-4. **PWA / 双因子 / 日志上报**：早期文档提及但本版未实现，如需要可后续迭代。
+15. **PWA / 双因子 / 日志上报**：早期文档提及但本版未实现，如需要可后续迭代。
 
 ---
 
