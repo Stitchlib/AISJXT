@@ -21,6 +21,7 @@ def summary(request: Request, bucket: str = "day"):
         total=stats["total"],
         defect_count=stats["defect_count"],
         defect_rate=stats["defect_rate"],
+        defect_frame_rate=stats.get("defect_frame_rate", stats["defect_rate"]),
         avg_processing_ms=stats["avg_processing_ms"],
         by_type=shares,
         trend=trend,

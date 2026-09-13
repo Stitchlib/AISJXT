@@ -23,6 +23,13 @@
       </el-form>
     </el-card>
 
+    <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
+      <template #title>
+        口径说明：表中「不良率」为<b>单帧缺陷率</b> = 该帧缺陷框数 / 检出对象总数；
+        质检报告页的批次 / 按日不良率为<b>聚合口径</b> = 缺陷帧数 / 总帧数，两者不可混用。
+      </template>
+    </el-alert>
+
     <el-card v-loading="loading" shadow="hover">
       <el-empty v-if="!loading && items.length === 0" description="暂无检测记录" />
       <el-table v-else :data="items" border row-key="id">

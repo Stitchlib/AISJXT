@@ -444,3 +444,37 @@ def test_export_samples_endpoint(client, tmp_path):
     z3 = zipfile.ZipFile(io.BytesIO(resp3.content))
     assert len([n for n in z3.namelist() if n.startswith("images/")]) == 0
     assert z3.read("classes.txt").decode().strip() == ""
+
+
+def test_metric_definition_formula_consistency(client):
+    """3.2 指标口径显式化：汇总 defect_rate 与明细手算的"缺陷帧/总帧"完全一致。
+
+    口径：单帧 defect_rate = defect_count/total_count（检出框占比）；
+    聚合（全局/批次/分桶）= 缺陷帧数 / 总帧数（一帧多框只计 1 个缺陷帧）。
+    """
+    h = _headers(client)
+    # 跑一段检测产生记录
+    last = _last_id(client, h)
+    client.post("/api/v1/inspection/start", headers=h)
+    new = _collect_new(client, h, last)
+    client.post("/api/v1/inspection/stop", headers=h)
+    assert new, "需要检测记录验证口径"
+
+    # ① 单帧口径：defect_rate == defect_count / total_count（保留 3 位）
+    for it in new:
+        tc = it.get("total_count") or 0
+        expected = round(it["defect_count"] / tc, 3) if tc else 0.0
+        assert abs(it["defect_rate"] - expected) < 1e-9
+
+    # ② 聚合口径：按全量明细手算缺陷帧占比，与 /reports/summary 一致
+    all_items = client.get(
+        "/api/v1/detection-results", headers=h, params={"page_size": 1000}
+    ).json()["items"]
+    total = len(all_items)
+    defect_frames = sum(1 for it in all_items if it["defect_count"] > 0)
+    expected_rate = round(defect_frames / total, 4) if total else 0.0
+    summary = client.get("/api/v1/reports/summary", headers=h).json()
+    assert summary["total"] == total
+    assert summary["defect_rate"] == expected_rate
+    # defect_frame_rate 别名与 defect_rate 同值（口径显式化）
+    assert summary["defect_frame_rate"] == expected_rate

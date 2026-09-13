@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.audit import AuditLogger
 from src.auth import AuthService
+from src.camera_capture import configure_ffmpeg_capture_options
 from src.camera_manager import CameraManager
 from src.config_manager import ConfigManager
 from src.database import Database
@@ -57,9 +58,35 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
+def _sync_cors(app: FastAPI) -> None:
+    """L6：CORS 白名单与 lifespan 中的 ConfigManager 单例显式对齐。
+
+    中间件在 import 期构建，配置经环境变量加载；此处在启动期（及配置热更后可再次
+    调用）把 cm.allowed_origins 同步到已构建的 CORSMiddleware，消除"两处各读一次"
+    的隐患。支持精确来源与特殊值 "*"；空列表 = 仅同源（跨域请求不带放行头）。
+    """
+    origins = app.state.cm.get().allowed_origins or []
+    stack = getattr(app, "middleware_stack", None)
+    depth = 0
+    while stack is not None and depth < 10:
+        if isinstance(stack, CORSMiddleware):
+            stack.allow_origins = origins
+            stack.allow_all_origins = "*" in origins
+            stack.allow_methods = ["*"] if origins else []
+            stack.allow_headers = ["*"] if origins else []
+            stack.allow_credentials = False
+            stack.preflight_explicit_allow_origin = bool(origins) and "*" not in origins
+            return
+        stack = getattr(stack, "app", None)
+        depth += 1
+    logger.warning("未找到 CORSMiddleware，CORS 白名单同步跳过")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cm = ConfigManager()
+    # L3：任何 VideoCapture 打开前下发 RTSP 超时/传输参数（进程级，一次性读取）
+    configure_ffmpeg_capture_options(cm.get().rtsp_open_timeout_sec)
     db = Database(cm.get().db_path)
     ws = ConnectionManager()
     cam = CameraManager(cm)  # 3.1 单一数据源：摄像头清单派生自 ConfigManager
@@ -96,6 +123,8 @@ async def lifespan(app: FastAPI):
     app.state.images = images
     app.state.auth = auth_svc
     app.state.audit = audit
+    # L6：CORS 白名单与当前配置对齐（import 期与启动期使用同一个 ConfigManager 单例）
+    _sync_cors(app)
     logger.info(
         "系统初始化完成 | host=%s cameras=%d detector_mode=%s users=%d",
         cm.get().server_host,

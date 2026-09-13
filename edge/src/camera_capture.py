@@ -55,6 +55,26 @@ def open_provider(source) -> Optional[FrameProvider]:
     return p if p.available else None
 
 
+def configure_ffmpeg_capture_options(open_timeout_sec: float = 30.0) -> str:
+    """L3：参数化 RTSP 打开/读写超时，避免故障摄像头让取流线程长时间挂死。
+
+    经 OpenCV 约定的 OPENCV_FFMPEG_CAPTURE_OPTIONS 环境变量下发（key;value 对以 |
+    分隔），必须在首次 cv2.VideoCapture(rtsp://...) 之前调用（OpenCV/FFmpeg 在打开
+    时一次性读取）：
+    - rtsp_transport=tcp：弱网下避免 UDP 丢包导致的花屏与连接失败；
+    - stimeout（微秒，RTSP 套接字 I/O 超时，旧版 ffmpeg 识别）；
+    - timeout（微秒，新版 ffmpeg 协议打开超时）。
+    返回实际写入的选项串，便于测试断言。
+    """
+    import os
+
+    us = max(1, int(float(open_timeout_sec) * 1_000_000))
+    opts = f"rtsp_transport;tcp|stimeout;{us}|timeout;{us}"
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = opts
+    logger.info("FFmpeg 采集选项已设置（RTSP 超时 %ss）: %s", open_timeout_sec, opts)
+    return opts
+
+
 def build_authed_source(source: str, username: str | None, password: str | None) -> str:
     """为 rtsp/rtsps/http/https 类源注入或替换 user:pass@ 鉴权信息。
 

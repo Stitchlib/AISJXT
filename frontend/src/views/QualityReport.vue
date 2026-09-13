@@ -17,6 +17,15 @@
       </div>
     </div>
 
+    <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
+      <template #title>指标口径说明</template>
+      <div class="metric-note">
+        <div><b>单帧缺陷率</b> = 该帧检出缺陷框数 / 检出对象总数（缺陷专用模型 metric_version=2 时即缺陷框占比；COCO/仿真基线 metric_version=1）。</div>
+        <div><b>批次 / 按日(周/月)聚合不良率</b> = 缺陷帧数 / 总帧数（一帧检出多个缺陷框只计 1 个缺陷帧，不做框数求和），四舍五入保留 4 位小数。</div>
+        <div><b>缺陷总数</b> = 全部检出缺陷框之和，与"缺陷帧数"口径不同，二者不可混用。</div>
+      </div>
+    </el-alert>
+
     <el-row :gutter="16" v-loading="loading">
       <el-col :span="6">
         <el-card shadow="hover"><el-statistic title="总检测数" :value="summary.total" /></el-card>
@@ -206,4 +215,6 @@ onUnmounted(() => {
 <style scoped>
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .ops { display: flex; gap: 8px; }
+.metric-note { font-size: 12px; line-height: 1.8; }
+.metric-note div { color: #606266; }
 </style>

@@ -232,6 +232,10 @@ class CameraRuntimeStatus(BaseModel):
 class InspectionStatus(BaseModel):
     running: bool = False
     total_processed: int = 0
+    # L5：本轮帧数（空闲重启归零）+ 本轮起始时刻/已运行秒数；total_processed 为进程累计
+    run_processed: int = 0
+    started_at: Optional[str] = None
+    since_start_seconds: Optional[float] = None
     active_camera_id: Optional[str] = None
     active_batch_id: Optional[str] = None
     running_cameras: List[CameraRuntimeStatus] = []  # G5：每摄任务与分摄计数
@@ -400,6 +404,9 @@ class ReportSummary(BaseModel):
     total: int
     defect_count: int
     defect_rate: float
+    # 3.2 口径显式化：聚合缺陷率（=缺陷帧数/总帧数）的别名，与 defect_rate 同值，
+    # 专门用于让前端/外部集成明确这是"帧口径"而非"框口径"。
+    defect_frame_rate: Optional[float] = None
     avg_processing_ms: float
     by_type: List[TypeShare] = Field(default_factory=list)
     trend: List[TrendPoint] = Field(default_factory=list)

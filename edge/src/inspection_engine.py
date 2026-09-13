@@ -21,6 +21,7 @@ import logging
 import threading
 import time
 from collections import deque
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from .camera_manager import CameraManager
@@ -71,7 +72,11 @@ class InspectionEngine:
         self._err_streak: Dict[str, int] = {}
         # 共享检测器串行推理锁：YOLO 推理是 CPU 阻塞调用，多摄并发下串行化保证正确性
         self._infer_lock = threading.Lock()
-        self.total_processed = 0
+        self.total_processed = 0  # 进程级累计（跨多轮启停，不重置）
+        # L5：本轮口径——每次"无任务→启动"归零；status 同时暴露本轮与累计两个口径
+        self._run_processed = 0
+        self._started_at: Optional[float] = None  # time.monotonic()，用于 since_start_seconds
+        self._started_iso: Optional[str] = None   # UTC ISO，用于 started_at 展示
         self.last_result: Optional[DetectionResult] = None
         self.active_camera_id: Optional[str] = None
         # 当前绑定批次（第二期 G4）：检测启动时绑定，进行中自动继承，结束批次后清空
@@ -125,6 +130,11 @@ class InspectionEngine:
         targets = self._resolve_targets(camera_id)
         # 幂等：已在跑的摄像头跳过，仅启动新增目标（G5 支持运行中追加）
         new_targets = [t for t in targets if t not in self._tasks]
+        if new_targets and not self._tasks:
+            # L5：从空闲进入运行——本轮计时与计数重新开始（运行中追加不重置）
+            self._started_at = time.monotonic()
+            self._started_iso = datetime.now(timezone.utc).isoformat()
+            self._run_processed = 0
         for cam in new_targets:
             # 向共享帧总线登记：真实摄像头由 hub 打开（仿真类型则 hub 出合成帧），
             # 无论哪种情况检测都能拿到帧，且与前端看到的画面是同一路。
@@ -173,6 +183,7 @@ class InspectionEngine:
             logger.info("检测任务已停止, camera=%s", cam)
         self.running = bool(self._tasks)
         if not self._tasks:
+            self._mark_idle()
             logger.info("全部检测任务已停止")
 
     def _detach_camera(self, camera_id: str, reason: str) -> None:
@@ -192,7 +203,14 @@ class InspectionEngine:
         if task and task is not asyncio.current_task():
             task.cancel()
         self.running = bool(self._tasks)
+        if not self._tasks:
+            self._mark_idle()
         logger.error("摄像头 %s 检测任务已自动摘除: %s", camera_id, reason)
+
+    def _mark_idle(self) -> None:
+        """运行态归零：清空本轮起始标记（累计 total_processed 保留）。"""
+        self._started_at = None
+        self._started_iso = None
 
     def camera_roi(self, camera_id: str) -> list:
         """读取摄像头 ROI 配置（G6）：归一化矩形列表，未配置返回空列表。"""
@@ -274,6 +292,7 @@ class InspectionEngine:
                 result.id = rid
                 self.last_result = result
                 self.total_processed += 1
+                self._run_processed += 1
                 self._proc_by_cam[camera_id] = self._proc_by_cam.get(camera_id, 0) + 1
                 # 把标注回写帧总线：视频流据此在画面上绘制缺陷框，
                 # 这样用户看到的不只是"数字"，而是框在面料上的实际位置。
@@ -322,9 +341,16 @@ class InspectionEngine:
             await asyncio.sleep(interval)
 
     def status(self) -> dict:
+        # L5：started_at/since_start_seconds 描述本轮运行起点；
+        # run_processed 为本轮帧数（空闲重启归零），total_processed 为进程累计（跨轮保留）。
         return {
             "running": bool(self._tasks),
             "total_processed": self.total_processed,
+            "run_processed": self._run_processed,
+            "started_at": self._started_iso,
+            "since_start_seconds": (
+                round(time.monotonic() - self._started_at, 1) if self._started_at is not None else None
+            ),
             "active_camera_id": self.active_camera_id,
             "active_batch_id": self.active_batch_id,
             "running_cameras": [

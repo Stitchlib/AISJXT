@@ -71,6 +71,9 @@ class AppConfig(BaseModel):
     # （linger 避免前端刷新页面时反复开关摄像头，RTSP 重连往往要数秒）
     stream_fps: int = 15
     stream_linger_seconds: float = 6.0
+    # L3：RTSP 打开/读写超时秒数（经 OPENCV_FFMPEG_CAPTURE_OPTIONS 下发），
+    # 避免故障 IP 摄像头让取流线程挂死；可用 AIQC_RTSP_OPEN_TIMEOUT_SEC 覆盖。
+    rtsp_open_timeout_sec: float = 30.0
     # 认证：JWT 签名密钥（生产环境务必通过环境变量覆盖）
     secret_key: str = "aiqc-local-dev-secret-change-me-2026-prod"
     token_expire_minutes: int = 60 * 12
@@ -244,6 +247,15 @@ class ConfigManager:
         env_model = os.environ.get("AIQC_MODEL_PATH")
         if env_model:
             cfg.model_path = env_model
+        # L3：RTSP 打开/读写超时
+        env_rtsp_to = os.environ.get("AIQC_RTSP_OPEN_TIMEOUT_SEC")
+        if env_rtsp_to:
+            try:
+                val = float(env_rtsp_to)
+                if val > 0:
+                    cfg.rtsp_open_timeout_sec = val
+            except (TypeError, ValueError):
+                pass
 
     def is_degraded(self) -> bool:
         return self._degraded

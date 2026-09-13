@@ -212,6 +212,10 @@ docker compose up -d --build
 8. **训练样本导出（第二期 1.3）**：模型迭代闭环收口——`GET /model-versions/export-samples` 把已人工判定（confirmed/false_positive）的缺陷帧 + 标注导出为 YOLO 目录结构（images/ + labels/ + classes.txt + data.yaml），直接可用于 `ultralytics train`；单次样本数受 `sample_export_limit`（默认 2000，可配）配额保护。
 9. **多摄像头并发检测（第二期 G5）**：引擎重构为任务字典（每摄一个检测任务），`start?camera_id=a,b` 或 `camera_id=all` 并发启动、可运行中追加；共享帧总线 + 共享检测器（推理加锁串行）；`status.running_cameras` 分摄计数；单摄连续异常自动摘除，不影响其他摄像头；单摄无参启动行为不变。
 10. **ROI 检测区域（第二期 G6）**：摄像头配置 `roi`（归一化矩形列表，`PUT /cameras/{id}`），检测前对 ROI 并集外画面涂黑掩膜 + 检出后按 bbox 中心二次过滤（区域外目标不计入结果），坐标保持原图像素（前端画框位置一致）；视频流叠加 ROI 边界；设备管理页支持拖拽画框编辑；不配置则全画面检测（行为不变）。
+11. **告警冷却/聚合与异步通知（第三期 2.1/2.2）**：规则可配 `cooldown_seconds`（0=不冷却，旧行为兼容）与 `silence_until`；冷却窗口内重复命中不重复通知，仅累加事件 `repeat_count`，恢复后可发恢复通知。通知经有界队列（默认 1000）由 worker 异步投递邮件/Webhook，外部服务故障不阻塞检测节拍，关停时 drain。
+12. **WebSocket 订阅过滤（第三期 2.3）**：`/ws?subscribe=cam_a,cam_b` 只收指定摄像头的 `detection_result`（空=全量，向后兼容）；每客户端独立发送队列，3s 发送超时或队列满即摘除该慢消费者，不影响其他客户端。
+13. **指标口径（第三期 3.2）**：单帧 `defect_rate` = 该帧缺陷框数 / 检出对象总数（`metric_version=2` 缺陷专用模型时即缺陷框占比；COCO/仿真基线为 1）；批次与按日/周/月聚合的不良率 = **缺陷帧数 / 总帧数**（一帧多框只计 1 个缺陷帧），`/reports/summary` 同时给出 `defect_frame_rate` 显式别名；前端质检报告页与历史记录页均有口径说明。
+14. **摄像头配置单一数据源（第三期 3.1）**：摄像头持久化字段唯一存放于 `config.json`（ConfigManager），CameraManager 只做现场物化视图与网络发现，新增/更新/删除/激活均落盘配置，杜绝内存态与配置文件双写漂移。
 4. **PWA / 双因子 / 日志上报**：早期文档提及但本版未实现，如需要可后续迭代。
 
 ---
