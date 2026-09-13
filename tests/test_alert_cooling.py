@@ -10,9 +10,7 @@
 """
 import sqlite3
 import sys
-import threading
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest

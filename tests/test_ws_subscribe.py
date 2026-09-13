@@ -11,7 +11,6 @@ import time
 import sys
 from pathlib import Path
 
-import pytest
 
 EDGE = Path(__file__).resolve().parent.parent / "edge"
 if str(EDGE) not in sys.path:
